@@ -1,0 +1,3 @@
+ru:
+  error_custom_decrement_field_exhausted: "Значение уже равно нулю (или меньше), списание недоступно"
+  notice_custom_decrement_field_decremented: "Списано"

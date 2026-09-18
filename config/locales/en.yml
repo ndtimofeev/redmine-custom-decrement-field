@@ -1,0 +1,3 @@
+en:
+  error_custom_decrement_field_exhausted: "Value is already zero (or less), decrement is unavailable"
+  notice_custom_decrement_field_decremented: "Decremented"

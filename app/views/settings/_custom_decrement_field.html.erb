@@ -1,0 +1,42 @@
+<p class="text-muted">
+  Плагин ничего не хранит в своих настройках — вся конфигурация конкретного
+  поля лежит в его собственном description. Соберите строку ниже и вставьте
+  её в конец описания нужного целочисленного кастомного поля
+  (Administration &rarr; Custom fields), привязанного к трекеру.
+</p>
+
+<p>
+  <label for="cdf-token">Ключевое слово (токен)</label><br>
+  <input type="text" id="cdf-token" value="MATSTOCK">
+</p>
+<p>
+  <label for="cdf-zero-status">Статус при обнулении (необязательно)</label><br>
+  <select id="cdf-zero-status">
+    <option value=""></option>
+    <% IssueStatus.all.each do |status| %>
+      <option value="<%= status.id %>"><%= status.name %></option>
+    <% end %>
+  </select>
+</p>
+<p>
+  <strong>Строка для description:</strong><br>
+  <code id="cdf-marker-output"></code>
+</p>
+
+<script>
+  (function () {
+    var tokenInput = document.getElementById('cdf-token');
+    var statusSelect = document.getElementById('cdf-zero-status');
+    var output = document.getElementById('cdf-marker-output');
+
+    function render() {
+      var parts = ['token=' + (tokenInput.value.trim() || 'TOKEN')];
+      if (statusSelect.value) parts.push('zero-status-id=' + statusSelect.value);
+      output.textContent = '<!-- custom-decrement-field: ' + parts.join('; ') + ' -->';
+    }
+
+    tokenInput.addEventListener('input', render);
+    statusSelect.addEventListener('change', render);
+    render();
+  })();
+</script>

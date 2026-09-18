@@ -1,0 +1,13 @@
+<% if @issue && CustomDecrementField::TokenConfig.fields_for_tracker(@issue.tracker).any? %>
+  <%= javascript_include_tag 'custom_decrement_field', plugin: 'redmine_custom_decrement_field' %>
+  <div id="custom-decrement-field-config" style="display:none" data-fields="<%=
+    CustomDecrementField::TokenConfig.fields_for_tracker(@issue.tracker).map { |field|
+      calculator = CustomDecrementField::StockCalculator.new(@issue, field)
+      {
+        id: field.id,
+        url: decrement_issue_custom_field_path(issue_id: @issue.id, custom_field_id: field.id),
+        exhausted: calculator.exhausted?
+      }
+    }.to_json
+  %>"></div>
+<% end %>
