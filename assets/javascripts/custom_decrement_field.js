@@ -1,7 +1,11 @@
+// Adds a "-1" button next to a decrementable custom field's value on the
+// issue view. See lib/custom_decrement_field/hooks.rb for why this is
+// done with JavaScript after the page has already rendered, rather than
+// by patching the core view partial that renders custom field rows.
 (function () {
   document.addEventListener('DOMContentLoaded', function () {
     var configEl = document.getElementById('custom-decrement-field-config');
-    if (!configEl) return;
+    if (!configEl) return; // not an issue page, or no decrementable field on this tracker
 
     var fields;
     try {
@@ -13,9 +17,11 @@
     var csrfToken = document.querySelector('meta[name="csrf-token"]');
 
     fields.forEach(function (field) {
-      // Redmine стабильно помечает строку кастомного поля классом cf_<id> —
-      // если вёрстка страницы это когда-нибудь изменит, кнопка просто не
-      // появится (деградация до отсутствия кнопки, а не сломанной страницы).
+      // Redmine renders each custom field's row with a stable "cf_<id>"
+      // class, keyed by the field's own database id. If a future
+      // Redmine version changes that markup, this selector simply finds
+      // nothing and the button never appears - a silent, harmless
+      // degradation to "no button", rather than a broken page.
       var row = document.querySelector('.cf_' + field.id);
       if (!row) return;
 
@@ -24,9 +30,15 @@
       button.className = 'icon icon-del custom-decrement-field-button';
       button.textContent = '−1';
       button.disabled = field.exhausted;
-      button.title = field.exhausted ? 'Значение уже равно нулю (или меньше)' : 'Списать 1';
+      button.title = field.exhausted
+        ? 'Already at zero (or below) - decrementing is disabled'
+        : 'Decrement by 1';
 
       button.addEventListener('click', function () {
+        // Disable immediately on click, before the request even starts,
+        // so a slow response (or a user double-clicking) can't fire a
+        // second request from the same button before the first one's
+        // result - and the resulting page reload - has come back.
         button.disabled = true;
 
         fetch(field.url, {
@@ -42,12 +54,18 @@
               alert(data.error);
               button.disabled = false;
             } else {
-              // Проще всего честно показать всё новое состояние карточки —
-              // число, новый комментарий и возможный переход статуса.
+              // A full reload is the simplest way to honestly reflect
+              // every consequence of the decrement at once: the new
+              // field value, the new comment in the activity feed, and
+              // any automatic status change - rather than trying to
+              // patch each of those into the DOM independently here.
               window.location.reload();
             }
           })
           .catch(function () {
+            // Network failure or non-JSON response: re-enable so the
+            // user can simply try again, instead of being stuck with a
+            // permanently disabled button after a transient error.
             button.disabled = false;
           });
       });

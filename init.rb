@@ -11,13 +11,16 @@ end
 Redmine::Plugin.register :redmine_custom_decrement_field do
   name 'Custom Decrement Field'
   author 'Your Company'
-  description 'Кастомное поле-счётчик: значение можно только уменьшать кнопкой на карточке задачи. ' \
-              'История и откат списаний — через обычные комментарии, без отдельной таблицы декрементов.'
+  description 'A custom field that can only be decremented from the issue view. ' \
+              'History and undo are handled through ordinary issue comments, with no separate ledger table.'
   version '0.1.0'
   url 'https://github.com/ndtimofeev/redmine-custom-decrement-field'
   requires_redmine version_or_higher: '6.0.0'
 
-  # Ничего не хранит сам — страница нужна только как генератор строки-маркера
-  # для description кастомного поля, см. app/views/settings.
+  # This settings page does not persist anything of its own - it only
+  # helps an administrator assemble the configuration string that has to
+  # be pasted into the target custom field's own description. See
+  # lib/custom_decrement_field/token_config.rb for why the configuration
+  # lives there instead of in a table owned by this plugin.
   settings partial: 'settings/custom_decrement_field', default: {}
 end
