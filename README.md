@@ -140,15 +140,25 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   format's own rendering, because the format's value-rendering method
   (`formatted_value`) turned out to be shared with how issue *list*
   columns render the same field - embedding a button there would put
-  one in every row of any list showing this column.
+  one in every row of any list showing this column. The script's source
+  is inlined into the page by `Hooks.inline_javascript` rather than
+  served as a separate file through Redmine's plugin asset pipeline
+  (`javascript_include_tag ..., plugin: ...`) - that pipeline is
+  Propshaft-based and, in practice, depended on `bin/rails
+  assets:precompile` having been run; when it hadn't, the `<script>` tag
+  rendered but its `src` 404ed with no visible error anywhere, so the
+  button silently never appeared.
 
 ## Known limitations / TODO
 
-- Not yet verified against a real Redmine 6.x install - the exact hook
-  name (`view_layouts_base_body_bottom`), the custom field row's CSS
-  class (`cf_<id>`), and the exact wording of the note-deletion
-  permission checkboxes should all be double-checked against your
-  specific version.
+- Tested against a real Redmine 6.x install: issue creation, seeding,
+  and the derived value/history mechanics are confirmed working there.
+  The decrement button depends on the inlined-script approach described
+  above, which is a recent change made specifically because the
+  Propshaft-asset version silently failed on that same install -
+  re-verify the button after updating. The note-deletion permission
+  checkboxes' exact wording is the one thing from the original "verify
+  this" list still worth double-checking against your specific version.
 - No automated tests yet.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
   controller). Arbitrary amounts are only possible by hand-editing a
