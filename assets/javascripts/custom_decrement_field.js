@@ -16,6 +16,17 @@
 
     var csrfToken = document.querySelector('meta[name="csrf-token"]');
 
+    // Redmine's link color isn't a fixed, guessable value - it depends on
+    // whichever theme is active. Rather than hardcode a hex that would be
+    // right for one theme and wrong for the next, sample it straight off
+    // an actual link already on the page (there's always at least one -
+    // the top menu, breadcrumb, etc.), so this always matches whatever
+    // the current theme really uses.
+    function redmineLinkColor() {
+      var probe = document.querySelector('#top-menu a, #main-menu a, #content a, a');
+      return probe ? getComputedStyle(probe).color : '#c00';
+    }
+
     fields.forEach(function (field) {
       // Redmine renders each custom field's row with a stable "cf_<id>"
       // class, keyed by the field's own database id. If a future
@@ -35,19 +46,22 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'custom-decrement-field-button';
-      button.textContent = '−'; // a plain hyphen renders too thin at this size; U+2212 MINUS SIGN reads as a solid bar
+      button.textContent = '−'; // U+2212 MINUS SIGN - reads as a solid bar, unlike a plain hyphen
       button.disabled = field.exhausted;
       button.title = field.exhausted
         ? 'Already at zero (or below) - decrementing is disabled'
         : 'Decrement by 1';
-      // No background/border/icon - just a bare, oversized glyph. Grey
-      // rather than red once disabled, so the color itself hints that
-      // clicking won't do anything, without relying on the tooltip.
+      // A small outlined circle - border and glyph both in whatever this
+      // theme's own link color is - rather than a filled, oversized
+      // button. Grey rather than that color once disabled, so the color
+      // itself hints that clicking won't do anything.
+      var color = field.exhausted ? '#999' : redmineLinkColor();
       button.style.cssText =
-        'background: none; border: none; padding: 0; margin-left: 0.35em;' +
-        'font-size: 1.5em; font-weight: bold; line-height: 1; vertical-align: middle;' +
-        'color: ' + (field.exhausted ? '#999' : '#c00') + ';' +
-        'cursor: ' + (field.exhausted ? 'default' : 'pointer') + ';';
+        'display: inline-flex; align-items: center; justify-content: center;' +
+        'box-sizing: border-box; width: 1.4em; height: 1.4em; margin-left: 0.4em; padding: 0;' +
+        'border-radius: 50%; border: 1px solid ' + color + '; background: none;' +
+        'color: ' + color + '; font-size: 0.85em; font-weight: bold; line-height: 1;' +
+        'vertical-align: middle; cursor: ' + (field.exhausted ? 'default' : 'pointer') + ';';
 
       button.addEventListener('click', function () {
         // Disable immediately on click, before the request even starts,
