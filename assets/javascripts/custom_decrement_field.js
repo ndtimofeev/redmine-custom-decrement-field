@@ -25,14 +25,29 @@
       var row = document.querySelector('.cf_' + field.id);
       if (!row) return;
 
+      // The row is <div class="..._cf cf_<id> attribute"> containing a
+      // "label" div and a "value" div (see Redmine's IssueFieldsRows).
+      // Appending into .value specifically, rather than the row itself,
+      // puts the button right after the number, on the same line, instead
+      // of as a third block-level sibling below the label/value pair.
+      var valueEl = row.querySelector('.value') || row;
+
       var button = document.createElement('button');
       button.type = 'button';
-      button.className = 'icon icon-del custom-decrement-field-button';
-      button.textContent = '−1';
+      button.className = 'custom-decrement-field-button';
+      button.textContent = '−'; // a plain hyphen renders too thin at this size; U+2212 MINUS SIGN reads as a solid bar
       button.disabled = field.exhausted;
       button.title = field.exhausted
         ? 'Already at zero (or below) - decrementing is disabled'
         : 'Decrement by 1';
+      // No background/border/icon - just a bare, oversized glyph. Grey
+      // rather than red once disabled, so the color itself hints that
+      // clicking won't do anything, without relying on the tooltip.
+      button.style.cssText =
+        'background: none; border: none; padding: 0; margin-left: 0.35em;' +
+        'font-size: 1.5em; font-weight: bold; line-height: 1; vertical-align: middle;' +
+        'color: ' + (field.exhausted ? '#999' : '#c00') + ';' +
+        'cursor: ' + (field.exhausted ? 'default' : 'pointer') + ';';
 
       button.addEventListener('click', function () {
         // Disable immediately on click, before the request even starts,
@@ -70,7 +85,7 @@
           });
       });
 
-      row.appendChild(button);
+      valueEl.appendChild(button);
     });
   });
 })();
