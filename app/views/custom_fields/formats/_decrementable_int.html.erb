@@ -12,9 +12,15 @@
   <em class="info"><%= l(:text_decrement_token_hint) %></em>
 </p>
 <p>
+  <%#
+    Redmine's LabelledFormBuilder#select reads the label from the THIRD
+    argument (options), not the fourth (html_options) - :label has to
+    live in the same hash as :include_blank, or it silently falls back
+    to CustomField.human_attribute_name(:zero_status_id), i.e. a bare
+    "Zero status" with no translation applied at all.
+  %>
   <%= f.select :zero_status_id,
         IssueStatus.all.collect { |s| [s.name, s.id.to_s] },
-        { include_blank: true },
-        label: :field_zero_status_id %>
+        { include_blank: true, label: :field_zero_status_id } %>
   <em class="info"><%= l(:text_zero_status_id_hint) %></em>
 </p>

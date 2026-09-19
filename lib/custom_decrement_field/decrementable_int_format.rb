@@ -63,6 +63,23 @@ module CustomDecrementField
     # settings, no new table, no migration.
     field_attributes :decrement_token, :zero_status_id
 
+    # field_attributes only makes decrement_token/zero_status_id exist as
+    # methods on CustomField - it says nothing about whether they may be
+    # mass-assigned. CustomField#safe_attributes is Redmine's own
+    # whitelist (a hardcoded list of attribute names in
+    # app/models/custom_field.rb), and CustomFieldsController#update
+    # saves through exactly that: `@custom_field.safe_attributes =
+    # params[:custom_field]`. Without this call, the admin form happily
+    # displays our two inputs and accepts whatever you type into them,
+    # but the values never survive the round trip: safe_attributes=
+    # silently drops any key not on the whitelist before the record is
+    # even saved, so the field always reads back blank.
+    #
+    # Redmine's safe_attributes macro accumulates rather than replaces
+    # (each call appends to the class's own list), so this adds our two
+    # names to the existing core list instead of needing to duplicate it.
+    CustomField.safe_attributes 'decrement_token', 'zero_status_id'
+
     def label
       'label_decrementable_int'
     end
