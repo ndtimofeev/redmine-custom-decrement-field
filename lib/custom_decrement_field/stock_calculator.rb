@@ -43,9 +43,8 @@ module CustomDecrementField
     # since it refuses to act once this predicate is already true. A
     # negative value can therefore only appear through the unsafe path -
     # someone hand-editing a comment to contain a larger negative number
-    # than what was actually left, or editing an unrelated field's
-    # description in a way that changes the token. When that happens, the
-    # field should behave exactly like "out of stock" everywhere the
+    # than what was actually left. When that happens, the field should
+    # behave exactly like "out of stock" everywhere the
     # calculator is consulted (button disabled, zero-status transition
     # fires), while still visibly showing the negative number rather than
     # silently clamping it to zero - precisely so a negative reading stays

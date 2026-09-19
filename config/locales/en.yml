@@ -1,3 +1,10 @@
 en:
   error_custom_decrement_field_exhausted: "Value is already zero (or less), decrement is unavailable"
   notice_custom_decrement_field_decremented: "Decremented"
+
+  label_decrementable_int: "Decrementable integer"
+  field_decrement_token: "Token"
+  field_zero_status_id: "Status on reaching zero"
+  text_decrement_token_hint: "Keyword searched for in issue comments, e.g. \"MATSTOCK:-1\". Pick something that reads naturally, since it will be visible in the comment history."
+  text_zero_status_id_hint: "Optional. Leave blank to not change the issue's status automatically."
+  text_decrementable_int_readonly_hint: "This value is computed from the issue's comment history and can't be edited directly here. Use the decrement button on the issue, or edit/delete the relevant comment to correct a mistake."

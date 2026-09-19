@@ -1,0 +1,20 @@
+<%# Rendered on the custom field's own admin form (new/edit), via
+    CustomDecrementField::DecrementableIntFormat.form_partial - see
+    custom_fields_helper.rb#render_custom_field_format_partial, the same
+    seam every core format (Numeric, List, Version, ...) uses for its own
+    extra settings. `f` is bound to the CustomField instance itself, so
+    these two fields read/write custom_field.decrement_token and
+    custom_field.zero_status_id directly - both backed by the
+    format_store column via the field_attributes declaration in
+    DecrementableIntFormat, no separate controller/model needed. %>
+<p>
+  <%= f.text_field :decrement_token, size: 30, label: :field_decrement_token %>
+  <em class="info"><%= l(:text_decrement_token_hint) %></em>
+</p>
+<p>
+  <%= f.select :zero_status_id,
+        IssueStatus.all.collect { |s| [s.name, s.id.to_s] },
+        { include_blank: true },
+        label: :field_zero_status_id %>
+  <em class="info"><%= l(:text_zero_status_id_hint) %></em>
+</p>

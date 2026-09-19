@@ -10,32 +10,51 @@ below before relying on it for anything real.
 
 ## Design
 
-- The field itself is a completely ordinary Redmine custom field
-  (`int`), with no custom `field_format` registered for it. If the
-  plugin is ever disabled, the field just becomes a plain integer field
-  showing whatever value was last computed - nothing breaks.
+- The field is a real, distinct entry in the custom field Format
+  dropdown - "Decrementable integer" - registered as
+  `CustomDecrementField::DecrementableIntFormat`, a subclass of
+  Redmine's own `Redmine::FieldFormat::IntFormat`. Because it inherits
+  from the built-in Integer format rather than reimplementing it, it
+  behaves identically to a plain integer everywhere Redmine cares
+  (query filters, sorting, totals, CSV/PDF export). If the plugin is
+  ever disabled, `Redmine::FieldFormat.find` falls back to a generic
+  built-in format (verified against Redmine 6.0-stable source): the
+  field keeps working everywhere issue values are shown or edited, just
+  as a plain text-like value (numeric sort/filter/totals are the only
+  casualty) - it does not crash anywhere. The one place the plugin's
+  absence is enforced is Administration &rarr; Custom fields: Redmine
+  refuses to re-save a field's *own* definition while its format is
+  unregistered, until you pick a different format there.
+- Per-field settings (the token to look for, and an optional status the
+  issue should move to once the counter reaches zero) are not stored in
+  a table owned by this plugin. They're declared as `format_store`
+  attributes (`field_attributes :decrement_token, :zero_status_id` in
+  `DecrementableIntFormat`) - the same built-in per-format storage
+  mechanism core uses for e.g. Numeric's thousands separator or
+  Version's status filter - and rendered right on the field's own admin
+  edit form via `form_partial`. No plugin-owned schema at all.
 - The field's value is **always derived**: it equals the sum of every
-  signed number tagged with a keyword (a "token") across the issue's
+  signed number tagged with the field's token across the issue's
   comments, including the very first entry - "how many units did we
   start with". There is no separate field for the initial quantity:
   whatever number a user types into the field on issue creation is
   automatically turned into that first comment
   (`IssuePatch#custom_decrement_field_seed`), and from that point on the
-  field never accepts direct input again - any attempt to edit it by
-  hand is silently overwritten on the very next recalculation
-  (`IssuePatch#custom_decrement_field_recalculate`).
-- Configuration (the token to look for, and an optional status the issue
-  should move to once the counter reaches zero) is not stored in a table
-  owned by this plugin at all - it lives inside the `description` of the
-  custom field itself. See `lib/custom_decrement_field/token_config.rb`
-  for the reasoning. The plugin's own settings page doesn't persist
-  anything; it's just a small helper that generates that description
-  string for you.
+  field never accepts direct input again. This is enforced twice, on
+  purpose: `DecrementableIntFormat#edit_tag` renders the field
+  `readonly` on every save after creation (so the form itself doesn't
+  invite editing it), and `IssuePatch#custom_decrement_field_recalculate`
+  silently overwrites whatever was submitted anyway on every save - the
+  second one is the real guarantee, the first is just honest UI.
 - No dedicated permission is introduced for decrementing. It reuses
   Redmine's own `add_issue_notes` permission, since a decrement is
   nothing more than a specially formatted comment. Undoing a mistaken
   decrement is just editing or deleting that comment, using Redmine's
   ordinary note permissions - the recalculation happens automatically.
+- The field is excluded from bulk edit (`self.bulk_edit_supported =
+  false`): a bulk-set value would just be overwritten by the next
+  recalculation like any other direct edit, so there's no point
+  offering it there.
 - Once the value reaches zero (or drops below it - which can only happen
   by hand-editing a comment, bypassing the button), the decrement button
   becomes unavailable. A negative value is not clamped to zero for
@@ -70,45 +89,41 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
    Confirm it loaded: Administration &rarr; Plugins should now list
    "Custom Decrement Field".
 
-3. **Create the custom field** that you want to make decrementable:
-   Administration &rarr; Custom fields &rarr; New custom field &rarr;
-   choose "Issues" as the object, format "Integer". Give it whatever
-   name and default value you like, and attach it to the tracker(s) it
-   should appear on.
+3. **Create the custom field**: Administration &rarr; Custom fields
+   &rarr; New custom field &rarr; choose "Issues" as the object, then
+   pick **"Decrementable integer"** directly from the Format dropdown
+   (it's a real option now, not a step performed after the fact). Give
+   it a name, attach it to the tracker(s) it should appear on, and fill
+   in the two extra fields this format adds to the form: a **Token**
+   (a short keyword such as `MATSTOCK` - pick something that reads
+   naturally, since it will show up in the comment history) and,
+   optionally, a **Status on reaching zero**.
 
-4. **Generate the configuration marker**: Administration &rarr; Plugins
-   &rarr; Custom Decrement Field &rarr; Configure. Fill in a token
-   (a short keyword such as `MATSTOCK`) and, optionally, the status the
-   issue should be moved to once the field reaches zero. Copy the
-   generated `<!-- custom-decrement-field: ... -->` line.
+4. *(Optional, cosmetic)* Note that the Format dropdown itself is
+   disabled by Redmine once the field exists, so there's no "convert
+   this field back to a plain integer" option through the normal UI -
+   by design, this plugin doesn't need one either (see "Known
+   limitations" for why a fallback conversion action wasn't built).
 
-5. **Paste that line into the custom field's own description**:
-   go back to the custom field created in step 3 (Administration &rarr;
-   Custom fields &rarr; your field) and append the copied line to the
-   end of its "Description" text. The rest of the description can stay
-   whatever human-readable help text you want - only the HTML comment
-   itself is machine-read.
-
-6. *(Optional, cosmetic)* Make the field read-only through
-   Administration &rarr; Workflow &rarr; field permissions, for every
-   status except the tracker's initial one. This is purely a UI hint so
-   users aren't tempted to type into a field that won't keep their
-   input - the actual guarantee that the field can't be changed by hand
-   comes from the code itself (`IssuePatch#custom_decrement_field_recalculate`),
-   not from this setting.
-
-7. **Verify it works**: create a new issue on that tracker, type a
+5. **Verify it works**: create a new issue on that tracker, type a
    number into the field, and save. The issue's history should show a
    comment containing your token, and the field should still show the
-   same number. Open the issue again - you should see a "&minus;1"
-   button next to the field; click it and confirm the field decreases by
-   one and a new comment appears. Decrement it down to zero and confirm
-   the button becomes disabled.
+   same number; opening the issue again for editing, the field should
+   now render read-only. Open the issue's own page - you should see a
+   "&minus;1" button next to the field; click it and confirm the field
+   decreases by one and a new comment appears. Decrement it down to
+   zero and confirm the button becomes disabled.
 
 ## Structure
 
-- `lib/custom_decrement_field/token_config.rb` - parses/builds the
-  configuration marker stored in a field's description.
+- `lib/custom_decrement_field/decrementable_int_format.rb` - registers
+  the "Decrementable integer" format, its per-field settings, and the
+  read-only editing behavior.
+- `app/views/custom_fields/formats/_decrementable_int.html.erb` - the
+  Token / Status-on-zero fields shown on the custom field's own admin
+  edit form.
+- `lib/custom_decrement_field/token_config.rb` - reads a decrementable
+  field's token/zero-status settings.
 - `lib/custom_decrement_field/stock_calculator.rb` - computes the
   current value from comment history.
 - `lib/custom_decrement_field/issue_patch.rb` - seeds the first history
@@ -121,7 +136,11 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   below zero).
 - `assets/javascripts/custom_decrement_field.js` + `lib/.../hooks.rb` -
   the "-1" button, drawn in by JavaScript on top of the field's normal
-  markup, without patching any core view partial.
+  markup. This stays JavaScript-based rather than moving into the field
+  format's own rendering, because the format's value-rendering method
+  (`formatted_value`) turned out to be shared with how issue *list*
+  columns render the same field - embedding a button there would put
+  one in every row of any list showing this column.
 
 ## Known limitations / TODO
 
@@ -138,11 +157,19 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 - A QR-code scanner was deliberately kept out of this plugin. It was
   discussed as a separate, independent plugin with its own contract (a
   scanned code is just a plain issue URL) and was never added here.
-- The settings page doesn't persist any state - that's intentional (see
-  "Design" above), but it does look unlike a typical Redmine settings
-  page, which normally has something to save.
+- Falling back to Redmine's generic `Base` format (rather than literally
+  back to plain `int`) when the plugin is removed was an accepted
+  trade-off, not an oversight: it costs numeric filtering/sorting/totals
+  on affected fields until the plugin comes back, but was judged not
+  worth a dedicated "convert back to int" action, since Redmine disables
+  the format dropdown for existing fields anyway (any such action would
+  need its own admin screen, not the standard form).
+- Saved custom queries that filter on this field are expected to mostly
+  keep working after the plugin is removed - Redmine's filter SQL
+  generation dispatches mainly on the operator, not the field's current
+  type - but this hasn't been confirmed hands-on against a live saved
+  query yet.
 - User-facing strings in `assets/javascripts/custom_decrement_field.js`
   (the button's tooltip text) are hardcoded in English rather than
-  going through Redmine's i18n system, unlike the controller's
-  `error_custom_decrement_field_exhausted` / `notice_custom_decrement_field_decremented`,
-  which are already translatable (see `config/locales/`).
+  going through Redmine's i18n system, unlike everything else, which is
+  translatable (see `config/locales/`).
