@@ -15,7 +15,7 @@ module CustomDecrementField
   # not just the issue view, so the partial itself is responsible for
   # checking whether there is even an @issue instance variable to act on
   # before rendering anything.
-  class ViewHooks < Redmine::Hook::ViewListener
+  class Hooks < Redmine::Hook::ViewListener
     render_on :view_layouts_base_body_bottom, partial: 'custom_decrement_field/assets'
   end
 end
