@@ -11,6 +11,17 @@ module CustomDecrementField
   #   field from the current comment history and writes the result back,
   #   silently discarding anything else that might have been submitted
   #   for it in the same request.
+  #
+  # Neither of these ever calls Issue#save/#save! on `self` from within a
+  # callback. An earlier version of this file did, for both the seed and
+  # the zero-status transition, and it intermittently raised
+  # ActiveRecord::StaleObjectError: re-saving the very same Issue instance
+  # from inside its own after_save/after_create, while Redmine's
+  # optimistic locking (issues.lock_version) is active, is a well-known
+  # fragile pattern - re-entrant saves on one instance can trip the
+  # version check even though nothing else touched the row. Both call
+  # sites below were rewritten to never do that; see each method's
+  # comment for the Redmine-native mechanism that replaces it.
   module IssuePatch
     def self.included(base)
       base.class_eval do
@@ -26,6 +37,16 @@ module CustomDecrementField
     # instead of leaving it sitting only in custom_values where nothing
     # else would ever account for it.
     #
+    # This only calls init_journal - it deliberately does NOT call save
+    # afterwards. init_journal merely stages @current_journal in memory;
+    # Redmine's own Issue#create_journal (`# Called after_save`, see
+    # app/models/issue.rb) is already registered as a core after_save
+    # callback, and since after_create always fires before after_save
+    # within the very same save, it runs after this method and persists
+    # @current_journal on its own - as `current_journal.save`, a plain
+    # Journal save, never a second Issue save. There is nothing left for
+    # us to save here.
+    #
     # This runs once, in after_create, specifically because the New Issue
     # form is the *only* moment a human is meant to type a plain number
     # directly into one of these fields: every later save is instead
@@ -38,11 +59,10 @@ module CustomDecrementField
     #
     # If several decrementable fields exist on the same tracker, all of
     # their seed values are folded into a single journal note (one line
-    # per field) and a single save, rather than calling init_journal once
-    # per field. Issue only tracks one pending journal per save
-    # (`@current_journal`), so a second init_journal call would silently
-    # replace the first call's text instead of adding to it - joining the
-    # lines ourselves avoids losing all but the last field's seed value.
+    # per field), rather than calling init_journal once per field - Issue
+    # only tracks one pending journal per save (`@current_journal`), so a
+    # second init_journal call would silently replace the first call's
+    # text instead of adding to it.
     def custom_decrement_field_seed
       notes_lines = CustomDecrementField::TokenConfig.fields_for_tracker(tracker).filter_map do |field|
         amount = custom_value_for(field)&.value.to_i
@@ -55,7 +75,6 @@ module CustomDecrementField
       return if notes_lines.empty?
 
       init_journal(User.current, notes_lines.join("\n"))
-      save!
     end
 
     # Recomputes every decrementable field on this issue's tracker and
@@ -66,19 +85,15 @@ module CustomDecrementField
     # the field on an update is simply overwritten here, in the very same
     # request, before the response is ever rendered back to them.
     #
-    # Re-entrancy note: the zero-status transition below calls `save!`
-    # again on this same Issue instance, purely to record the status
-    # change through Redmine's normal save path (see the comment on that
-    # call for why). That nested save re-triggers this very same
-    # after_save callback. Without the guard flag this would not be
-    # infinite recursion - by the second pass, value_in_db already equals
-    # the freshly computed value, so the ">0 crossing to <=0" condition
-    # below can no longer be true, and the transition simply does not fire
-    # again - but it would still mean a wasted extra pass recomputing
-    # every decrementable field on the tracker, whose result is thrown
-    # away. The @custom_decrement_field_processing flag skips that
-    # redundant pass outright, instead of relying on the transition
-    # condition to merely make it a no-op.
+    # Re-entrancy note: the zero-status transition below persists a
+    # Journal directly (see custom_decrement_field_apply_zero_status),
+    # which re-triggers JournalPatch's after_save hook, which calls back
+    # into this very method on the same Issue instance. That's still
+    # genuine re-entrancy, just no longer through Issue#save - the guard
+    # flag exists to skip that redundant nested pass outright (its result
+    # would be thrown away anyway, since nothing about the computed value
+    # changes between the two passes), not to work around any locking
+    # error - update_column and Journal#save don't touch issues.lock_version.
     def custom_decrement_field_recalculate_all
       return if @custom_decrement_field_processing
 
@@ -122,20 +137,37 @@ module CustomDecrementField
       return unless old_value.positive? && new_value <= 0
       return if status_id == zero_status.id
 
-      # The status is set directly on the model and saved, bypassing the
-      # Workflow transition-permission check that would normally apply if
-      # a user picked this status from the issue's status dropdown. That
-      # check exists to stop a *user* from moving an issue somewhere their
-      # role isn't allowed to send it; it should not also stop an
-      # *automated* consequence of running out of stock just because the
-      # operator who happened to press the decrement button doesn't
-      # personally have permission to, say, close the issue. This is the
-      # same technique used by other "auto-transition on some system
-      # condition" style Redmine plugins (e.g. auto-closing a parent once
-      # its last sub-issue closes).
-      self.status = zero_status
-      init_journal(User.current) # empty notes: only the status change itself needs to be recorded
-      save!
+      custom_decrement_field_apply_zero_status(zero_status)
+    end
+
+    # Moves the issue to zero_status and records that as a normal
+    # "Status changed from X to Y" journal entry, without ever calling
+    # Issue#save on `self` (see the re-entrancy note above for why that
+    # matters here specifically).
+    #
+    # update_column bypasses validations, callbacks and the optimistic
+    # locking check entirely - appropriate here, since this is a system-
+    # triggered side effect of running out of stock, not a user-picked
+    # status transition, and it should not be blocked by the Workflow
+    # transition-permission check that exists to constrain *users*, nor
+    # by re-entrant-save fragility. Journal#add_attribute_detail is the
+    # same private helper Redmine's own core code uses (e.g. Issue's
+    # parent/child change tracking) to build a normal attribute-change
+    # journal detail by hand. Reusing (rather than creating a second)
+    # current_journal, when one is already pending from whatever add-a-
+    # comment action triggered this recalculation (typically the
+    # decrement controller), makes the status change show up as part of
+    # that same journal entry - "removed 1, status: New -> Depleted" as
+    # one history entry, not two.
+    def custom_decrement_field_apply_zero_status(zero_status)
+      Issue.transaction do
+        old_status_id = status_id
+        update_column(:status_id, zero_status.id)
+
+        journal = init_journal(User.current)
+        journal.send(:add_attribute_detail, 'status_id', old_status_id, zero_status.id)
+        journal.save!
+      end
     end
   end
 end
