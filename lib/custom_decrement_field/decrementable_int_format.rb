@@ -91,15 +91,19 @@ module CustomDecrementField
     # handled purely by recalculation, so rendering an editable input on
     # the ordinary edit form would just be confusing: whatever gets typed
     # there is silently discarded on save anyway. Making the field
-    # `readonly` here prevents that confusion natively, on top of (not
+    # non-editable here prevents that confusion natively, on top of (not
     # instead of) the server-side overwrite, which remains the real
     # guarantee regardless of what any particular form renders.
     #
-    # `readonly` rather than `disabled` on purpose: a disabled input is
-    # not submitted with the form at all (fine either way, since the
-    # server-side recalculation doesn't care what was submitted), but a
-    # readonly one still looks like an ordinary filled-in field and stays
-    # selectable/copyable, instead of looking greyed-out and broken.
+    # `disabled` rather than `readonly`: tried `readonly` first, but in
+    # practice a readonly text input renders visually identical to an
+    # ordinary editable one in most browsers - it just silently refuses
+    # keystrokes, which read as confusing/broken rather than "this isn't
+    # meant to be edited". `disabled` gets the browser's built-in greyed-
+    # out styling for free, at the cost of the field not being submitted
+    # with the form - a non-issue, since the server-side recalculation
+    # overwrites the field regardless of what (if anything) was submitted
+    # for it.
     def edit_tag(view, tag_id, tag_name, custom_value, options={})
       if custom_value.customized.new_record?
         super
@@ -108,7 +112,7 @@ module CustomDecrementField
           tag_name, custom_value.value,
           options.merge(
             :id => tag_id,
-            :readonly => true,
+            :disabled => true,
             :title => l(:text_decrementable_int_readonly_hint)
           )
         )

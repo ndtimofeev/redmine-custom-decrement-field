@@ -3,14 +3,14 @@ module CustomDecrementField
   # "write-once, then derived forever after" counter, without ever needing
   # to distinguish "who" is writing to it:
   #
-  # * after_create seeds the very first history entry from whatever number
-  #   the user typed into the field on the New Issue form.
-  # * after_save (which also fires for the very save that after_create's
-  #   own logic triggers, as well as for every later update, including
-  #   ones made through the REST API) unconditionally recomputes the
-  #   field from the current comment history and writes the result back,
-  #   silently discarding anything else that might have been submitted
-  #   for it in the same request.
+  # * an after_save seeds the very first history entry from whatever
+  #   number the user typed into the field on the New Issue form, guarded
+  #   to only ever do this on the save that created the record.
+  # * a second after_save unconditionally recomputes the field from the
+  #   current comment history and writes the result back on every save,
+  #   including the one seed just triggered, silently discarding anything
+  #   else that might have been submitted for the field in the same
+  #   request.
   #
   # Neither of these ever calls Issue#save/#save! on `self` from within a
   # callback. An earlier version of this file did, for both the seed and
@@ -25,7 +25,15 @@ module CustomDecrementField
   module IssuePatch
     def self.included(base)
       base.class_eval do
-        after_create :custom_decrement_field_seed
+        # Both hooks are after_save, and declaration order matters here:
+        # seed must run - and its journal must be persisted - before
+        # recalculate reads the comment history, and seed must also run
+        # after Redmine's own Acts::Customizable#save_custom_field_values
+        # (also after_save, registered by core long before this plugin
+        # loads) has actually written the just-typed value into
+        # custom_values. See custom_decrement_field_seed's comment for
+        # why after_create is too early for that.
+        after_save :custom_decrement_field_seed
         after_save :custom_decrement_field_recalculate_all
       end
     end
@@ -37,25 +45,39 @@ module CustomDecrementField
     # instead of leaving it sitting only in custom_values where nothing
     # else would ever account for it.
     #
-    # This only calls init_journal - it deliberately does NOT call save
-    # afterwards. init_journal merely stages @current_journal in memory;
-    # Redmine's own Issue#create_journal (`# Called after_save`, see
-    # app/models/issue.rb) is already registered as a core after_save
-    # callback, and since after_create always fires before after_save
-    # within the very same save, it runs after this method and persists
-    # @current_journal on its own - as `current_journal.save`, a plain
-    # Journal save, never a second Issue save. There is nothing left for
-    # us to save here.
+    # This has to be an after_save callback, not after_create as an
+    # earlier version had it. custom_value_for reads from the `custom_values`
+    # association - the actual persisted CustomValue records - and those
+    # are only written by Redmine's own Acts::Customizable module via
+    # `after_save :save_custom_field_values`. after_create always fires
+    # before any after_save, for the very same save, so at after_create
+    # time custom_value_for(field) is still reading whatever was there
+    # *before* this save (nothing, for a brand new issue) - amount comes
+    # out zero every time and the seed is silently skipped. Waiting for
+    # our own after_save (which core's callback, registered first, has
+    # already run by the time ours fires) is what makes the just-typed
+    # value actually visible here.
     #
-    # This runs once, in after_create, specifically because the New Issue
-    # form is the *only* moment a human is meant to type a plain number
-    # directly into one of these fields: every later save is instead
-    # handled by custom_decrement_field_recalculate below, which always
-    # overwrites the field with the value derived from history, regardless
-    # of what was submitted. There is no separate "is this still the
-    # first save" flag anywhere in this code - after_create simply never
-    # fires again for a given record, so this seeding logic can never
-    # accidentally run a second time for the same issue.
+    # id_previously_changed? is the guard that makes this fire exactly
+    # once, on creation, rather than every update: the primary key only
+    # ever transitions from nil to a real value on the save that inserts
+    # the row, so this is true on that one save and false on every save
+    # after it - a well-established Rails idiom for "was this record just
+    # created" from inside an after_save/after_commit callback, and more
+    # robust than trying to infer it from field state.
+    #
+    # Unlike core's create_journal, we can no longer rely on some *later*
+    # after_save picking up @current_journal for us - core's create_journal
+    # is registered earlier than this plugin's callbacks and has already
+    # run by the time we get here - so this method saves the journal
+    # itself. That's still only ever a Journal#save, never a second
+    # Issue#save, so it carries none of the re-entrant-save fragility
+    # described in the module comment above. journals.reload guards
+    # against the (in practice unlikely, but cheap to rule out) case
+    # where something already cached the journals association before this
+    # point, which would otherwise hide the just-created journal from
+    # custom_decrement_field_recalculate_all's history scan that runs
+    # right after this, on the same save.
     #
     # If several decrementable fields exist on the same tracker, all of
     # their seed values are folded into a single journal note (one line
@@ -64,6 +86,8 @@ module CustomDecrementField
     # second init_journal call would silently replace the first call's
     # text instead of adding to it.
     def custom_decrement_field_seed
+      return unless id_previously_changed?
+
       notes_lines = CustomDecrementField::TokenConfig.fields_for_tracker(tracker).filter_map do |field|
         amount = custom_value_for(field)&.value.to_i
         next if amount.zero? # nothing typed (or explicitly zero) - no history entry needed
@@ -75,6 +99,8 @@ module CustomDecrementField
       return if notes_lines.empty?
 
       init_journal(User.current, notes_lines.join("\n"))
+      current_journal.save!
+      journals.reload
     end
 
     # Recomputes every decrementable field on this issue's tracker and
