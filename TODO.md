@@ -1,5 +1,5 @@
 # TODO
 
-- Кнопка декремента всё ещё выглядит плохо (кружок с минусом рядом со
-  значением поля) — нужно переделать оформление позже. Текущая версия:
+- The decrement button still looks bad (the circle with a minus next to
+  the field's value) - styling needs a rework later. Current version:
   `assets/javascripts/custom_decrement_field.js`.
