@@ -46,7 +46,6 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'custom-decrement-field-button';
-      button.textContent = '−'; // U+2212 MINUS SIGN - reads as a solid bar, unlike a plain hyphen
       button.disabled = field.exhausted;
       button.title = field.exhausted
         ? 'Already at zero (or below) - decrementing is disabled'
@@ -58,10 +57,21 @@
       var color = field.exhausted ? '#999' : redmineLinkColor();
       button.style.cssText =
         'display: inline-flex; align-items: center; justify-content: center;' +
-        'box-sizing: border-box; width: 1.4em; height: 1.4em; margin-left: 0.4em; padding: 0;' +
+        'box-sizing: border-box; width: 1.26em; height: 1.26em; margin-left: 0.4em; padding: 0;' +
         'border-radius: 50%; border: 1px solid ' + color + '; background: none;' +
         'color: ' + color + '; font-size: 0.85em; font-weight: bold; line-height: 1;' +
         'vertical-align: middle; cursor: ' + (field.exhausted ? 'default' : 'pointer') + ';';
+
+      // The minus glyph's own font metrics sit a little below the exact
+      // vertical center of its em-box in most fonts, so it read as
+      // slightly low even with the button's own box already centered by
+      // flexbox above. Wrapping it in its own inline-block span lets us
+      // nudge just the glyph up a touch, without affecting the circle's
+      // size or position.
+      var glyph = document.createElement('span');
+      glyph.textContent = '−'; // U+2212 MINUS SIGN - reads as a solid bar, unlike a plain hyphen
+      glyph.style.cssText = 'display: inline-block; transform: translateY(-0.08em);';
+      button.appendChild(glyph);
 
       button.addEventListener('click', function () {
         // Disable immediately on click, before the request even starts,
