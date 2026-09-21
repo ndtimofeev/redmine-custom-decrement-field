@@ -1,0 +1,8 @@
+<%# Rendered in <head> on every page via view_layouts_base_html_head (see
+    lib/custom_decrement_field/hooks.rb). Unconditional, unlike the old
+    JS hook this plugin used to have: CSS is cheap to load on pages that
+    never show a decrementable field, and it needs to already be present
+    before the field's own HTML (drawn by
+    DecrementableIntFormat#formatted_custom_value) renders, so there is
+    no @issue-based check to make here the way there was for JS. %>
+<style><%= raw CustomDecrementField::Hooks.inline_stylesheet %></style>

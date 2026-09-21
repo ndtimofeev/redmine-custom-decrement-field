@@ -9,6 +9,7 @@ Rails.application.config.to_prepare do
   require_relative 'lib/custom_decrement_field/stock_calculator'
   require_relative 'lib/custom_decrement_field/issue_patch'
   require_relative 'lib/custom_decrement_field/journal_patch'
+  require_relative 'lib/custom_decrement_field/hooks'
 end
 
 Redmine::Plugin.register :redmine_custom_decrement_field do

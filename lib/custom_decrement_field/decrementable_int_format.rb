@@ -176,10 +176,11 @@ module CustomDecrementField
     # A plain button_to - an ordinary HTML <form>, not a link with a
     # click handler - so it keeps working with JavaScript disabled, and
     # needs no CSRF token handling of its own (Rails' own form helpers
-    # already embed one). Styling is deliberately minimal for now; see
-    # TODO.md - the previous JS-drawn button's circular styling isn't
-    # reproduced here since there is no client-side script left to
-    # sample the theme's own link color the way it did.
+    # already embed one). All actual styling lives in
+    # assets/stylesheets/custom_decrement_field.css (inlined into <head>
+    # by Hooks - see that file's own comment for why) - only the
+    # class name lives here, so this method has nothing to change the
+    # next time the button's look needs adjusting.
     def decrement_button(view, issue, field, calculator)
       exhausted = calculator.exhausted?
       view.button_to(
@@ -188,8 +189,7 @@ module CustomDecrementField
         method: :post,
         disabled: exhausted,
         title: exhausted ? l(:error_custom_decrement_field_exhausted) : l(:button_custom_decrement_field_decrement),
-        class: 'custom-decrement-field-button',
-        style: 'margin-left: 0.4em; padding: 0 0.5em; line-height: 1.4em;'
+        class: 'custom-decrement-field-button'
       )
     end
   end

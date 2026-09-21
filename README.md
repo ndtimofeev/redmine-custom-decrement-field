@@ -166,11 +166,23 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
     entirely;
   - CSV export, PDF export, and notification emails do reach this
     method, but always with `html=false` explicitly.
-  - There is no equivalent of `main`'s `hooks.rb` /
-    `assets/javascripts/custom_decrement_field.js` /
-    `view_layouts_base_body_bottom` hook on this branch - nothing is
-    injected after the fact, so there's nothing that depends on the
-    plugin asset pipeline or on JavaScript running at all.
+  - Unlike `main`, nothing here is injected into the page after the fact
+    by JavaScript, so there's nothing that depends on JavaScript running
+    at all in the visitor's browser.
+- `assets/stylesheets/custom_decrement_field.css` +
+  `lib/.../hooks.rb` - the button's actual styling (size, color, hover/
+  disabled states) - kept out of `decrementable_int_format.rb` entirely,
+  which only sets the `custom-decrement-field-button` class name and
+  nothing else, so restyling the button never touches Ruby code. Reuses
+  the same lesson `main` learned the hard way with its JS: the file is
+  inlined into `<head>` as a `<style>` block by `Hooks.inline_stylesheet`
+  rather than served through Redmine's plugin asset pipeline
+  (`stylesheet_link_tag ..., plugin: ...`), which depends on `bin/rails
+  assets:precompile` having actually been run. See the CSS file's own
+  comment for why it needs to fight Redmine's default
+  `input[type=submit]`/`button[type=submit]` styling specifically (that
+  rule's fixed 28px height is what made the button look oversized and
+  disrupt the row's layout in the first place).
 
 ## Known limitations / TODO
 
@@ -182,11 +194,12 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   note-deletion permission checkboxes' exact wording is the one thing
   from the original "verify this" list still worth double-checking
   against your specific version.
-- The button's styling is minimal/unstyled for now (see `TODO.md`) -
-  `main`'s JS version had gone through several rounds of cosmetic
-  polish (a small outlined circle sampling the theme's own link color)
-  that has no equivalent here yet, since there is no client-side script
-  left to sample anything with.
+- The button's color (`#169`) is hardcoded to match Redmine's *default*
+  theme link color, unlike `main`'s JS version, which sampled the
+  active theme's actual link color at runtime via `getComputedStyle`
+  (there is no equivalent trick available from plain CSS). On a custom
+  theme with a different accent color, the button will keep working but
+  may not match it exactly.
 - No automated tests yet.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
   controller). Arbitrary amounts are only possible by hand-editing a

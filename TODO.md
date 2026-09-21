@@ -1,11 +1,7 @@
 # TODO
 
-- The decrement button still looks bad (the circle with a minus next to
-  the field's value) - styling needs a rework later. Current version:
-  `assets/javascripts/custom_decrement_field.js`.
-
-- On the `server-rendered-button` branch, the button has no cosmetic
-  styling at all yet (a bare button element, no color/shape matching to
-  the active theme) - same underlying complaint, needs its own pass.
-  Current version: `DecrementableIntFormat#decrement_button` in
-  `lib/custom_decrement_field/decrementable_int_format.rb`.
+- The decrement button's color (`#169`) is hardcoded to Redmine's
+  *default* theme link color rather than sampled from the active theme -
+  on a custom theme with a different accent color it will keep working
+  but may not match exactly. Current version:
+  `assets/stylesheets/custom_decrement_field.css`.

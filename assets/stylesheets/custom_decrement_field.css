@@ -1,0 +1,44 @@
+/* The "-1" button next to a decrementable field's value on the issue
+   page. Deliberately NOT left with the full push-button look (the one
+   used for "Save"/"Create" at the bottom of a form) that Redmine's own
+   `input[type=submit], button[type=submit]` rule in application.css
+   would otherwise give it - that rule sets a fixed 28px height, which is
+   taller than an attribute row's own line height and was what actually
+   broke the row's vertical alignment. Restyled instead to read as a
+   small, inline Redmine-style action, the same size and color as the
+   field's own value text, similar to how Redmine draws other small
+   inline actions (e.g. the "x" next to a watcher).
+
+   The first selector's only job is to win specificity over that core
+   rule so the reset actually takes effect: `input[type="submit"]` counts
+   as one element plus one attribute selector, which already outweighs a
+   plain class selector, so the attribute is repeated here purely for
+   that reason, not because it matters semantically. */
+button.custom-decrement-field-button[type="submit"],
+input.custom-decrement-field-button[type="submit"] {
+  height: auto;
+  padding: 0 0.3em;
+  border: none;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.custom-decrement-field-button {
+  margin-left: 0.4em;
+  border-radius: 2px;
+  color: #169; /* same blue as Redmine's own default-theme links (a, a:link) */
+  font: inherit;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.custom-decrement-field-button:hover:not(:disabled) {
+  background-color: #eee;
+  text-decoration: underline;
+}
+
+.custom-decrement-field-button:disabled {
+  color: #999;
+  cursor: default;
+}
