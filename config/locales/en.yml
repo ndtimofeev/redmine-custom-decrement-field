@@ -1,7 +1,7 @@
 en:
   error_custom_decrement_field_exhausted: "Value is already zero (or less), decrement is unavailable"
   notice_custom_decrement_field_decremented: "Decremented"
-  button_custom_decrement_field_decrement: "Decrement by 1"
+  button_custom_decrement_field_decrement: "Decrement"
 
   label_decrementable_int: "Decrementable integer"
   field_decrement_token: "Token"
