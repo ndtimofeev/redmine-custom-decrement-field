@@ -84,6 +84,58 @@ module CustomDecrementField
       'label_decrementable_int'
     end
 
+    # Draws the "-1" button as part of the field's own HTML, instead of
+    # injecting it with JavaScript after the page has already rendered
+    # (an earlier version of this plugin did that; see git history/README
+    # on the `main` branch). That JS-based approach turned out to be
+    # fragile in practice - it depended on Redmine's Propshaft plugin
+    # asset pipeline (worked around once already by inlining the script),
+    # and was later found to not even run at all in some mobile browsers,
+    # for reasons that were hard to pin down without access to the actual
+    # device. Rendering the button as ordinary server-side HTML sidesteps
+    # both classes of problem entirely: there is no separate script to
+    # fail to load or fail to execute, on any browser.
+    #
+    # This is safe to do here - and does NOT leak the button into every
+    # place this field's value is ever displayed - because of exactly how
+    # Redmine calls this method, verified against 6.0-stable source:
+    #
+    # * The issue's own show page (custom_fields_helper.rb#show_value,
+    #   called from issues_helper.rb's
+    #   render_half_width_custom_fields_rows /
+    #   render_full_width_custom_fields_rows) is the ONLY call site that
+    #   reaches here with html=true for an Issue custom field.
+    # * Issue list/query columns never call this method at all for an
+    #   integer-backed field: QueryCustomFieldColumn#value already casts
+    #   the value to a plain Ruby Integer before queries_helper.rb's
+    #   column_value renders it, so it's format_object's generic Integer
+    #   branch that handles it, not this class.
+    # * CSV export, PDF export, and issue notification emails all reach
+    #   this method, but always with html=false explicitly (see
+    #   issues_pdf_helper.rb and issues_helper.rb#email_issue_attributes)
+    #   - so `html` being true really does mean "this is the live issue
+    #   page", not merely "some caller asked for HTML".
+    #
+    # If a future Redmine version changes any of that, the worst case is
+    # the button quietly stops appearing somewhere it used to (html now
+    # false where it used to be true) or starts appearing somewhere new
+    # (html now true where it used to be false) - neither crashes, and
+    # both would be caught by simply looking at the affected page again
+    # after upgrading.
+    def formatted_custom_value(view, custom_value, html=false)
+      text = super
+      return text unless html
+
+      issue = custom_value.customized
+      return text unless issue.is_a?(Issue) && issue.persisted?
+      return text unless User.current.allowed_to?(:add_issue_notes, issue.project)
+
+      calculator = CustomDecrementField::StockCalculator.new(issue, custom_value.custom_field)
+      return text unless calculator.enabled?
+
+      view.safe_join([text.to_s, decrement_button(view, issue, custom_value.custom_field, calculator)])
+    end
+
     # The only moment a human is meant to type a plain number directly
     # into this field is issue creation (see
     # IssuePatch#custom_decrement_field_seed, which turns that number
@@ -117,6 +169,28 @@ module CustomDecrementField
           )
         )
       end
+    end
+
+    private
+
+    # A plain button_to - an ordinary HTML <form>, not a link with a
+    # click handler - so it keeps working with JavaScript disabled, and
+    # needs no CSRF token handling of its own (Rails' own form helpers
+    # already embed one). Styling is deliberately minimal for now; see
+    # TODO.md - the previous JS-drawn button's circular styling isn't
+    # reproduced here since there is no client-side script left to
+    # sample the theme's own link color the way it did.
+    def decrement_button(view, issue, field, calculator)
+      exhausted = calculator.exhausted?
+      view.button_to(
+        '−', # U+2212 MINUS SIGN - reads as a solid bar, unlike a plain hyphen
+        view.decrement_issue_custom_field_path(issue_id: issue.id, custom_field_id: field.id),
+        method: :post,
+        disabled: exhausted,
+        title: exhausted ? l(:error_custom_decrement_field_exhausted) : l(:button_custom_decrement_field_decrement),
+        class: 'custom-decrement-field-button',
+        style: 'margin-left: 0.4em; padding: 0 0.5em; line-height: 1.4em;'
+      )
     end
   end
 end

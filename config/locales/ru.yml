@@ -1,6 +1,7 @@
 ru:
   error_custom_decrement_field_exhausted: "Значение уже равно нулю (или меньше), списание недоступно"
   notice_custom_decrement_field_decremented: "Списано"
+  button_custom_decrement_field_decrement: "Списать 1"
 
   label_decrementable_int: "Декрементируемое целое число"
   field_decrement_token: "Токен"

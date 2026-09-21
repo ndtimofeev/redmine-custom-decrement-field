@@ -8,6 +8,22 @@ ordinary issue comments, with no separate ledger table.
 discussion, not a production-ready plugin. See "Known limitations / TODO"
 below before relying on it for anything real.
 
+**This branch (`server-rendered-button`) is an alternative to `main`'s
+decrement button.** Everything about the field's design, storage, and
+derivation is identical to `main` - the only difference is how the "-1"
+button reaches the page. `main` draws it with JavaScript, injected into
+the page after it has already rendered; see `main`'s README/git history
+for that version. This branch instead renders the button as ordinary
+server-side HTML, from inside `DecrementableIntFormat`'s own
+value-formatting method - see "Structure" below for exactly why that's
+safe to do without leaking a button into issue lists, CSV/PDF export, or
+notification emails. It exists because the JS version turned out to be
+fragile in practice - most recently, it was found to not appear at all in
+at least one mobile browser, for a reason that couldn't be pinned down
+without device access. A plain server-rendered `<form>` button has no
+separate script to fail to load or execute, on any browser, at the cost
+of a full page reload on click instead of an in-place AJAX update.
+
 ## Design
 
 - The field is a real, distinct entry in the custom field Format
@@ -133,32 +149,44 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   recalculation whenever a comment is added, edited, or deleted.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
-  below zero).
-- `assets/javascripts/custom_decrement_field.js` + `lib/.../hooks.rb` -
-  the "-1" button, drawn in by JavaScript on top of the field's normal
-  markup. This stays JavaScript-based rather than moving into the field
-  format's own rendering, because the format's value-rendering method
-  (`formatted_value`) turned out to be shared with how issue *list*
-  columns render the same field - embedding a button there would put
-  one in every row of any list showing this column. The script's source
-  is inlined into the page by `Hooks.inline_javascript` rather than
-  served as a separate file through Redmine's plugin asset pipeline
-  (`javascript_include_tag ..., plugin: ...`) - that pipeline is
-  Propshaft-based and, in practice, depended on `bin/rails
-  assets:precompile` having been run; when it hadn't, the `<script>` tag
-  rendered but its `src` 404ed with no visible error anywhere, so the
-  button silently never appeared.
+  below zero). Unchanged from `main`: it still responds to both `html`
+  (redirect back to the issue, used by this branch's plain `<form>`
+  button) and `json` (used by `main`'s JS button).
+- `DecrementableIntFormat#formatted_custom_value` (in
+  `decrementable_int_format.rb`) - draws the "-1" button as part of the
+  field's own HTML. This is only safe to do here, and doesn't leak the
+  button into every place the value is ever shown, because of exactly
+  how Redmine calls this method (verified against 6.0-stable source,
+  full reasoning in the method's own comment):
+  - the issue's own show page is the *only* call site that reaches this
+    method with `html=true` for an Issue custom field;
+  - issue list/query columns never call it at all for an integer-backed
+    field - the value is already cast to a plain Ruby `Integer` before
+    the generic renderer sees it, bypassing the custom field format
+    entirely;
+  - CSV export, PDF export, and notification emails do reach this
+    method, but always with `html=false` explicitly.
+  - There is no equivalent of `main`'s `hooks.rb` /
+    `assets/javascripts/custom_decrement_field.js` /
+    `view_layouts_base_body_bottom` hook on this branch - nothing is
+    injected after the fact, so there's nothing that depends on the
+    plugin asset pipeline or on JavaScript running at all.
 
 ## Known limitations / TODO
 
-- Tested against a real Redmine 6.x install: issue creation, seeding,
-  and the derived value/history mechanics are confirmed working there.
-  The decrement button depends on the inlined-script approach described
-  above, which is a recent change made specifically because the
-  Propshaft-asset version silently failed on that same install -
-  re-verify the button after updating. The note-deletion permission
-  checkboxes' exact wording is the one thing from the original "verify
-  this" list still worth double-checking against your specific version.
+- This branch's button has not yet been tested against a real Redmine
+  install the way `main`'s was - re-verify it (including on the mobile
+  browser that motivated this branch) before relying on it. The
+  underlying field mechanics (creation, seeding, derived value/history)
+  are unchanged from `main`, where they are confirmed working. The
+  note-deletion permission checkboxes' exact wording is the one thing
+  from the original "verify this" list still worth double-checking
+  against your specific version.
+- The button's styling is minimal/unstyled for now (see `TODO.md`) -
+  `main`'s JS version had gone through several rounds of cosmetic
+  polish (a small outlined circle sampling the theme's own link color)
+  that has no equivalent here yet, since there is no client-side script
+  left to sample anything with.
 - No automated tests yet.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
   controller). Arbitrary amounts are only possible by hand-editing a
@@ -179,7 +207,8 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   generation dispatches mainly on the operator, not the field's current
   type - but this hasn't been confirmed hands-on against a live saved
   query yet.
-- User-facing strings in `assets/javascripts/custom_decrement_field.js`
-  (the button's tooltip text) are hardcoded in English rather than
-  going through Redmine's i18n system, unlike everything else, which is
-  translatable (see `config/locales/`).
+- Unlike `main`'s JS button, this branch's button text/tooltip go
+  through Redmine's own i18n system (`button_custom_decrement_field_decrement`,
+  `error_custom_decrement_field_exhausted` in `config/locales/`), since
+  it's now rendered by Ruby view code rather than a script with no
+  access to `l()`.
