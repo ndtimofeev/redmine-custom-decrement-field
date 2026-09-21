@@ -2,54 +2,59 @@
    page. Deliberately NOT left with the full push-button look (the one
    used for "Save"/"Create" at the bottom of a form) that Redmine's own
    `input[type=submit], button[type=submit]` rule in application.css
-   would otherwise give it - that rule sets a fixed 28px height, which is
-   taller than an attribute row's own line height and was what actually
-   broke the row's vertical alignment.
+   would otherwise give it.
 
    Restyled instead as a small outlined circle in Redmine's own link
    color - plain colored text alone (an earlier version of this file)
    read as too faint against the value next to it to register as a
-   button at all. The outline plus the hover/disabled color changes give
-   it enough visual weight to be noticed without going back to a full
-   push-button.
+   button at all.
 
-   The first selector's only job is to win specificity over that core
-   rule so the reset actually takes effect: `input[type="submit"]` counts
-   as one element plus one attribute selector, which already outweighs a
-   plain class selector, so the attribute is repeated here purely for
-   that reason, not because it matters semantically. */
+   Every property below - including width/height - lives in ONE rule,
+   on purpose: an earlier version split sizing into a separate plain
+   `.custom-decrement-field-button` class rule, which lost the height
+   property specifically to Redmine's own
+   `input[type="submit"], button[type="submit"] { height: 28px; ... }`
+   (that compound selector - one element + one attribute - outweighs a
+   lone class selector). width came from the plain class rule
+   unopposed, height came from core's 28px, and the result was a circle
+   stretched into a tall oval. Keeping every property in this one
+   maximally-specific selector (element + [type="submit"] + our class)
+   means nothing here can lose a specificity fight to a core rule for
+   any property, sizing included. The background is deliberately `none`
+   rather than any explicit color, so the circle stays transparent
+   against whatever's behind it and only fills in on hover - an earlier
+   version accidentally set it to a hardcoded white here. */
 button.custom-decrement-field-button[type="submit"],
 input.custom-decrement-field-button[type="submit"] {
-  padding: 0;
-  background: #fff;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-.custom-decrement-field-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   width: 1.3em;
   height: 1.3em;
-  margin-left: 0.4em;
+  margin: 0 0 0 0.4em;
+  padding: 0;
   border: 1px solid #169; /* same blue as Redmine's own default-theme links (a, a:link) */
   border-radius: 50%;
+  background: none;
   color: #169;
   font: inherit;
   font-weight: bold;
   line-height: 1;
   vertical-align: middle;
   cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.custom-decrement-field-button:hover:not(:disabled) {
+button.custom-decrement-field-button[type="submit"]:hover:not(:disabled),
+input.custom-decrement-field-button[type="submit"]:hover:not(:disabled) {
   background-color: #169;
   color: #fff;
 }
 
-.custom-decrement-field-button:disabled {
+button.custom-decrement-field-button[type="submit"]:disabled,
+input.custom-decrement-field-button[type="submit"]:disabled {
   border-color: #999;
   color: #999;
   cursor: default;
