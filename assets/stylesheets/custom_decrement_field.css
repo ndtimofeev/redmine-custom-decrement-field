@@ -4,10 +4,14 @@
    `input[type=submit], button[type=submit]` rule in application.css
    would otherwise give it - that rule sets a fixed 28px height, which is
    taller than an attribute row's own line height and was what actually
-   broke the row's vertical alignment. Restyled instead to read as a
-   small, inline Redmine-style action, the same size and color as the
-   field's own value text, similar to how Redmine draws other small
-   inline actions (e.g. the "x" next to a watcher).
+   broke the row's vertical alignment.
+
+   Restyled instead as a small outlined circle in Redmine's own link
+   color - plain colored text alone (an earlier version of this file)
+   read as too faint against the value next to it to register as a
+   button at all. The outline plus the hover/disabled color changes give
+   it enough visual weight to be noticed without going back to a full
+   push-button.
 
    The first selector's only job is to win specificity over that core
    rule so the reset actually takes effect: `input[type="submit"]` counts
@@ -16,29 +20,37 @@
    that reason, not because it matters semantically. */
 button.custom-decrement-field-button[type="submit"],
 input.custom-decrement-field-button[type="submit"] {
-  height: auto;
-  padding: 0 0.3em;
-  border: none;
-  background: none;
+  padding: 0;
+  background: #fff;
   -webkit-appearance: none;
   appearance: none;
 }
 
 .custom-decrement-field-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 1.3em;
+  height: 1.3em;
   margin-left: 0.4em;
-  border-radius: 2px;
-  color: #169; /* same blue as Redmine's own default-theme links (a, a:link) */
+  border: 1px solid #169; /* same blue as Redmine's own default-theme links (a, a:link) */
+  border-radius: 50%;
+  color: #169;
   font: inherit;
   font-weight: bold;
+  line-height: 1;
+  vertical-align: middle;
   cursor: pointer;
 }
 
 .custom-decrement-field-button:hover:not(:disabled) {
-  background-color: #eee;
-  text-decoration: underline;
+  background-color: #169;
+  color: #fff;
 }
 
 .custom-decrement-field-button:disabled {
+  border-color: #999;
   color: #999;
   cursor: default;
 }

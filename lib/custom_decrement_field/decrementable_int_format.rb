@@ -96,35 +96,36 @@ module CustomDecrementField
     # both classes of problem entirely: there is no separate script to
     # fail to load or fail to execute, on any browser.
     #
-    # This is safe to do here - and does NOT leak the button into every
-    # place this field's value is ever displayed - because of exactly how
-    # Redmine calls this method, verified against 6.0-stable source:
+    # `html` alone does NOT tell us this is the issue's own page, contrary
+    # to what an earlier version of this comment claimed after misreading
+    # the relevant core method. The actual call chain, re-verified against
+    # 6.0-stable source:
     #
-    # * The issue's own show page (custom_fields_helper.rb#show_value,
-    #   called from issues_helper.rb's
-    #   render_half_width_custom_fields_rows /
-    #   render_full_width_custom_fields_rows) is the ONLY call site that
-    #   reaches here with html=true for an Issue custom field.
-    # * Issue list/query columns never call this method at all for an
-    #   integer-backed field: QueryCustomFieldColumn#value already casts
-    #   the value to a plain Ruby Integer before queries_helper.rb's
-    #   column_value renders it, so it's format_object's generic Integer
-    #   branch that handles it, not this class.
-    # * CSV export, PDF export, and issue notification emails all reach
+    # * The issue's own show page reaches here with html=true, via
+    #   custom_fields_helper.rb#show_value.
+    # * CSV export, PDF export, and issue notification emails also reach
     #   this method, but always with html=false explicitly (see
-    #   issues_pdf_helper.rb and issues_helper.rb#email_issue_attributes)
-    #   - so `html` being true really does mean "this is the live issue
-    #   page", not merely "some caller asked for HTML".
+    #   issues_pdf_helper.rb and issues_helper.rb#email_issue_attributes).
+    # * Issue list/query columns ALSO reach here with html=true:
+    #   queries_helper.rb#column_content fetches
+    #   `column.value_object(item)` - for a QueryCustomFieldColumn this is
+    #   the raw CustomValue itself (NOT the separate, cast-to-Integer
+    #   `#value` method, which is only used for grouping/totals) - and
+    #   column_value's default case is `format_object(value)`, which
+    #   defaults `html` to true and dispatches straight back to this same
+    #   method. This was missed in an earlier pass and caused the button
+    #   to appear in every row of any list/query showing this column.
     #
-    # If a future Redmine version changes any of that, the worst case is
-    # the button quietly stops appearing somewhere it used to (html now
-    # false where it used to be true) or starts appearing somewhere new
-    # (html now true where it used to be false) - neither crashes, and
-    # both would be caught by simply looking at the affected page again
-    # after upgrading.
+    # Since `html` can't distinguish "the issue's own page" from "a list
+    # showing this field as a column", check the controller/action
+    # instead: render_half_width_custom_fields_rows /
+    # render_full_width_custom_fields_rows (which is what actually calls
+    # show_value on the issue page) are only ever invoked from
+    # issues/show.html.erb, i.e. IssuesController#show.
     def formatted_custom_value(view, custom_value, html=false)
       text = super
       return text unless html
+      return text unless view.controller.is_a?(IssuesController) && view.controller.action_name == 'show'
 
       issue = custom_value.customized
       return text unless issue.is_a?(Issue) && issue.persisted?

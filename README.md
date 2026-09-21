@@ -154,18 +154,20 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   button) and `json` (used by `main`'s JS button).
 - `DecrementableIntFormat#formatted_custom_value` (in
   `decrementable_int_format.rb`) - draws the "-1" button as part of the
-  field's own HTML. This is only safe to do here, and doesn't leak the
-  button into every place the value is ever shown, because of exactly
-  how Redmine calls this method (verified against 6.0-stable source,
-  full reasoning in the method's own comment):
-  - the issue's own show page is the *only* call site that reaches this
-    method with `html=true` for an Issue custom field;
-  - issue list/query columns never call it at all for an integer-backed
-    field - the value is already cast to a plain Ruby `Integer` before
-    the generic renderer sees it, bypassing the custom field format
-    entirely;
-  - CSV export, PDF export, and notification emails do reach this
-    method, but always with `html=false` explicitly.
+  field's own HTML. `html` alone is not enough to tell this call apart
+  from an issue *list* rendering this field as a column - an earlier
+  version of this file claimed it was, based on misreading a core
+  helper method, and the button did in fact leak into every row of any
+  list/query showing this column until that was caught (see the
+  method's own comment for the exact call chain: `column_content` in
+  queries_helper.rb reaches this same method with `html=true`). The fix
+  checks `view.controller`/`action_name` instead, since
+  `render_half_width_custom_fields_rows` /
+  `render_full_width_custom_fields_rows` - what actually draws the
+  issue's own attribute rows - are only ever invoked from
+  `IssuesController#show`.
+  - CSV export, PDF export, and notification emails reach this method
+    with `html=false` explicitly, so they're excluded regardless.
   - Unlike `main`, nothing here is injected into the page after the fact
     by JavaScript, so there's nothing that depends on JavaScript running
     at all in the visitor's browser.
