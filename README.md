@@ -62,6 +62,26 @@ of a full page reload on click instead of an in-place AJAX update.
   invite editing it), and `IssuePatch#custom_decrement_field_recalculate`
   silently overwrites whatever was submitted anyway on every save - the
   second one is the real guarantee, the first is just honest UI.
+- **The token grammar**: `TOKEN : <signed integer>`, optionally followed
+  by a trailing literal - `TOKEN : -1 xyz123`. Every writer in this
+  plugin (the seed, the decrement controller) now produces the spaced
+  form consistently, but `StockCalculator#value`'s own regex stays
+  permissive on both sides of the colon (`TOKEN:-1` still counts) so
+  existing history, or a hand-typed comment, isn't silently excluded.
+  The optional literal is free-form data made only of characters that
+  never need percent-encoding in a URL (RFC 3986's "unreserved" set) -
+  supplied by `POST .../decrement`'s optional `literal` param, and
+  otherwise absent (this is all opt-in; nothing about the field's own
+  behavior changes if no caller ever uses it). If a caller supplies one
+  that already appears in this field's history
+  (`StockCalculator#literal_used?`), the request short-circuits to "this
+  already happened" (`error_custom_decrement_field_duplicate_literal`)
+  instead of decrementing again - meant for exactly the kind of caller
+  that can't always tell whether its own previous request actually
+  landed (a network retry, a double-tap before a button could disable
+  itself, the same code scanned twice within a moment of itself) and
+  wants to say so explicitly rather than relying on being fast enough to
+  avoid it.
 - No dedicated permission is introduced for decrementing. It reuses
   Redmine's own `add_issue_notes` permission, since a decrement is
   nothing more than a specially formatted comment. Undoing a mistaken
@@ -149,9 +169,11 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   recalculation whenever a comment is added, edited, or deleted.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
-  below zero). Unchanged from `main`: it still responds to both `html`
-  (redirect back to the issue, used by this branch's plain `<form>`
-  button) and `json` (used by `main`'s JS button).
+  below zero, and now also refuses a duplicate of an already-recorded
+  `literal` param - see "Design"). Unchanged from `main` otherwise: it
+  still responds to both `html` (redirect back to the issue, used by
+  this branch's plain `<form>` button) and `json` (used by `main`'s JS
+  button).
 - `DecrementableIntFormat#formatted_custom_value` (in
   `decrementable_int_format.rb`) - draws the "-1" button as part of the
   field's own HTML. `html` alone is not enough to tell this call apart

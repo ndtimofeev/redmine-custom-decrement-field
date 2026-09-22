@@ -93,7 +93,7 @@ module CustomDecrementField
         next if amount.zero? # nothing typed (or explicitly zero) - no history entry needed
 
         config = CustomDecrementField::TokenConfig.for_field(field)
-        "#{config.token}:#{amount}"
+        "#{config.token} : #{amount}"
       end
 
       return if notes_lines.empty?

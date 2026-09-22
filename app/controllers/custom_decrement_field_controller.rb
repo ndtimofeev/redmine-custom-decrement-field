@@ -12,6 +12,8 @@ class CustomDecrementFieldController < ApplicationController
   DECREMENT_AMOUNT = 1
 
   def decrement
+    literal = decrement_literal
+
     Issue.transaction do
       # Locks the issue row for the duration of this transaction so that
       # two concurrent decrement requests for the same issue - e.g. two
@@ -27,6 +29,17 @@ class CustomDecrementFieldController < ApplicationController
       calculator = CustomDecrementField::StockCalculator.new(@issue, @field)
       @remaining = calculator.value
 
+      # Checked before exhausted?, and short-circuits regardless of
+      # current stock either way: a caller that supplies a literal is
+      # telling us "this is one specific decrement, not just any
+      # decrement" - if that exact one is already on record, the right
+      # answer is "nothing to do", not re-evaluating whether a fresh
+      # decrement would currently be allowed.
+      if literal && calculator.literal_used?(literal)
+        @error = l(:error_custom_decrement_field_duplicate_literal)
+        raise ActiveRecord::Rollback
+      end
+
       if calculator.exhausted?
         @error = l(:error_custom_decrement_field_exhausted)
         raise ActiveRecord::Rollback
@@ -39,8 +52,14 @@ class CustomDecrementFieldController < ApplicationController
       # other comment change (see
       # IssuePatch#custom_decrement_field_recalculate_all). From this
       # controller's point of view, decrementing and leaving a plain
-      # comment are literally the same operation.
-      @issue.init_journal(User.current, "#{calculator.config.token}:-#{DECREMENT_AMOUNT}")
+      # comment are literally the same operation. The literal, when
+      # given, rides along as trailing text on the same line purely so
+      # a later request can find it again via
+      # StockCalculator#literal_used? - it plays no part in computing
+      # the value itself.
+      note = "#{calculator.config.token} : -#{DECREMENT_AMOUNT}"
+      note = "#{note} #{literal}" if literal
+      @issue.init_journal(User.current, note)
       @issue.save!
 
       # Re-read after save! rather than doing simple arithmetic
@@ -57,6 +76,21 @@ class CustomDecrementFieldController < ApplicationController
   end
 
   private
+
+  # nil for anything that isn't a non-empty string made only of characters
+  # that never need percent-encoding in a URL (RFC 3986's "unreserved" set:
+  # letters, digits, "-", ".", "_", "~") - which also happens to be a safe
+  # character class to embed as trailing text in a journal note without
+  # needing any escaping of our own. A caller doesn't have to supply this
+  # at all (params[:literal] simply absent is the common case, and behaves
+  # exactly as before this existed); one that supplies something outside
+  # this character class is treated the same as not having supplied one,
+  # rather than rejecting the request outright, since a malformed literal
+  # can't corrupt anything - it just can't be recorded/matched later.
+  def decrement_literal
+    raw = params[:literal].to_s
+    raw if raw.match?(/\A[A-Za-z0-9_.~-]+\z/)
+  end
 
   def find_issue
     @issue = Issue.find(params[:issue_id])

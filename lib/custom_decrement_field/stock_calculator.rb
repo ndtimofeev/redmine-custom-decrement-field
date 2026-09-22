@@ -26,6 +26,16 @@ module CustomDecrementField
     # editing or deleting a past comment must change the result - a cached
     # running total, updated incrementally, would never notice either of
     # those on its own.
+    #
+    # The colon's surrounding whitespace is optional on both sides - "a:1",
+    # "a : 1", "a:  1" all match - even though every writer in this plugin
+    # now produces "a : 1" (spaced) consistently; this stays permissive so
+    # existing history written before that, or a hand-typed comment,
+    # doesn't silently stop counting. A decrement can also carry an
+    # optional trailing literal (see #literal_used?) - "a : -1 xyz123" -
+    # which this pattern doesn't need to know anything about: it only
+    # captures the number, and scan() finds that regardless of whatever
+    # non-matching text follows it on the same line.
     def value
       return 0 unless enabled?
 
@@ -36,6 +46,29 @@ module CustomDecrementField
 
         journal.notes.scan(pattern).sum { |m| m.first.to_i }
       end
+    end
+
+    # True if a decrement carrying this exact literal already appears in
+    # this field's history. The literal is free-form data supplied by
+    # whatever posted the decrement (see
+    # CustomDecrementFieldController#decrement) - typically a one-off
+    # reference that caller generates for exactly this purpose, so a
+    # retried or duplicated request (a network retry, a double-tap before
+    # a button could disable itself, the same code scanned twice within a
+    # moment of itself) can be recognized as "this already happened"
+    # instead of silently decrementing a second time.
+    #
+    # Matches on the literal's presence alone, not the amount next to it -
+    # a genuine duplicate of the same request would carry the same amount
+    # anyway, so there is nothing extra to gain from also comparing it,
+    # and it keeps this method usable regardless of whether the amount is
+    # ever anything other than DECREMENT_AMOUNT's -1.
+    def literal_used?(literal)
+      return false unless enabled? && literal.present?
+
+      pattern = /#{Regexp.escape(config.token)}\s*:\s*[+-]?\d+\s+#{Regexp.escape(literal)}(?=\s|\z)/
+
+      issue.journals.any? { |journal| journal.notes.present? && pattern.match?(journal.notes) }
     end
 
     # We deliberately check <= 0 here, not == 0. The safe path (the
