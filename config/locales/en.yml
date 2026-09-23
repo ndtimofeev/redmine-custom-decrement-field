@@ -5,6 +5,11 @@ en:
   button_custom_decrement_field_decrement: "Decrement"
 
   label_decrementable_int: "Decrementable integer"
+  label_custom_decrement_field_inconsistent: "Decrement field history is inconsistent"
+  text_custom_decrement_field_inconsistent_title: "This issue's decrementable field history looks inconsistent - it was probably changed by editing or deleting a comment directly, instead of through the decrement button."
+  text_custom_decrement_field_inconsistent_negative: "Current value is %{value}, which is below zero - this can only happen if a comment recording a decrement was edited or duplicated by hand."
+  text_custom_decrement_field_inconsistent_duplicate: "The same decrement (%{literal}) was recorded more than once"
+  text_custom_decrement_field_inconsistent_marker: "This field's history is inconsistent - see the notice above the issue for details"
   field_decrement_token: "Token"
   field_zero_status_id: "Status on reaching zero"
   text_decrement_token_hint: "Keyword searched for in issue comments, e.g. \"MATSTOCK : -1\" (spaces around the colon are optional - both forms are recognized). Pick something that reads naturally, since it will be visible in the comment history."

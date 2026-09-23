@@ -8,6 +8,8 @@ Rails.application.config.to_prepare do
   require_relative 'lib/custom_decrement_field/token_config'
   require_relative 'lib/custom_decrement_field/stock_calculator'
   require_relative 'lib/custom_decrement_field/issue_patch'
+  require_relative 'lib/custom_decrement_field/issue_css_classes_patch'
+  require_relative 'lib/custom_decrement_field/issue_query_patch'
   require_relative 'lib/custom_decrement_field/journal_patch'
   require_relative 'lib/custom_decrement_field/hooks'
 end

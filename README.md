@@ -82,6 +82,45 @@ of a full page reload on click instead of an in-place AJAX update.
   itself, the same code scanned twice within a moment of itself) and
   wants to say so explicitly rather than relying on being fast enough to
   avoid it.
+- **Detecting an inconsistent history.** The safe path (button/controller)
+  can never produce a negative value or a repeated `literal` on its own -
+  both are only reachable by hand-editing or duplicating a comment
+  directly. `StockCalculator#inconsistent?` treats a negative value and a
+  duplicated literal as one single concept (deliberately not two separate
+  ones to check/filter on) and is the one method everywhere in this
+  plugin that answers "does this need a human to look at it":
+  - A small warning marker appears right next to the field's own value
+    (`DecrementableIntFormat#inconsistency_marker`) - purely a nudge,
+    visible to anyone who can see the value at all (unlike the decrement
+    button, it isn't gated on `add_issue_notes`).
+  - A Wikipedia-"marked for deletion"-style banner renders above the
+    issue's own content on its show page (`InconsistencyBannerHook`),
+    naming the specific problem and, for a duplicated literal, linking to
+    the exact comments involved via Redmine's own `#note-N` anchors -
+    filtered through `Issue#visible_journals_with_index` so a link never
+    points at a private note the current viewer isn't allowed to see.
+  - Affected issues get a `custom-decrement-field-inconsistent` CSS class
+    on their row in list/query views (`IssueCssClassesPatch`, prepended
+    onto `Issue#css_classes` - the same mechanism core itself uses for
+    "overdue" rows).
+  - A "Decrement field history is inconsistent" query filter
+    (`IssueQueryPatch`) makes inconsistent issues findable directly.
+    There's no column to filter on - the filter is registered via
+    `add_available_filter`, and answered through Redmine's
+    `sql_for_<name>_field` dynamic dispatch (verified against
+    `Query#statement`/`Query#sql_for_field` in 6.0-stable source: this
+    dispatch is checked *before* the generic, hardcoded per-operator
+    path, so it needs no monkey-patching of that generic method to add a
+    filter with no backing column at all). Since "inconsistent" can only
+    be answered by scanning journal notes in Ruby, the filter computes
+    the actual matching issue ids up front (scoped to issues the current
+    user can already see, and to trackers that have a decrementable
+    field at all) and turns that into a plain `id IN (...)`/`NOT IN
+    (...)` clause - no caching, on purpose (consistent with this
+    plugin's "no separate ledger" design throughout): this is meant for
+    occasional auditing, not high-frequency access, so it starts as
+    simple as possible and would only grow a cache if that ever proved
+    too slow in practice.
 - No dedicated permission is introduced for decrementing. It reuses
   Redmine's own `add_issue_notes` permission, since a decrement is
   nothing more than a specially formatted comment. Undoing a mistaken
@@ -167,6 +206,18 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   zero-status transition) on every save.
 - `lib/custom_decrement_field/journal_patch.rb` - triggers a
   recalculation whenever a comment is added, edited, or deleted.
+- `lib/custom_decrement_field/issue_css_classes_patch.rb` - adds a CSS
+  class to an inconsistent issue's row/box, wherever `Issue#css_classes`
+  is consulted. A separate file from `issue_patch.rb` on purpose: it
+  `prepend`s rather than `include`s, since overriding an existing method
+  and calling `super` needs to sit above the class in the ancestor chain,
+  which plain `include` (used by `issue_patch.rb`'s after_save hooks,
+  which only ever add new methods) does not do.
+- `lib/custom_decrement_field/issue_query_patch.rb` - adds the
+  "inconsistent history" query filter to `IssueQuery`.
+- `app/views/custom_decrement_field/_inconsistency_banner.html.erb` +
+  `InconsistencyBannerHook` (in `hooks.rb`) - the banner rendered above
+  an inconsistent issue's own content.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
   below zero, and now also refuses a duplicate of an already-recorded

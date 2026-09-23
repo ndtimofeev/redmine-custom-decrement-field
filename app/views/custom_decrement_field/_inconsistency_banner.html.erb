@@ -1,0 +1,61 @@
+<%#
+  Rendered on every single page via view_layouts_base_body_top (see
+  lib/custom_decrement_field/hooks.rb's InconsistencyBannerHook) - there
+  is no hook that fires only on an issue's own show page and nowhere
+  else, so `controller` (part of every hook's call context - see
+  Redmine::Hook::Helper#call_hook) is checked by hand below, and every
+  page this doesn't apply to falls out at this first check without
+  rendering anything.
+%>
+<%
+  issue = if controller.is_a?(IssuesController) && controller.action_name == 'show'
+            controller.instance_variable_get(:@issue)
+          end
+  calculators = if issue.is_a?(Issue) && issue.persisted?
+                  CustomDecrementField::StockCalculator.calculators_for(issue).select(&:inconsistent?)
+                else
+                  []
+                end
+%>
+<% if calculators.any? %>
+  <%#
+    The same "Note #N" numbering core itself shows next to every comment
+    (see Issue#visible_journals_with_index, used the same way by
+    IssuesController#show to build @journals) - built the same way here,
+    rather than numbering duplicate_literals' own journals directly, so
+    that a duplicate whose second occurrence is a private note the
+    current user isn't allowed to see simply gets no link below, instead
+    of linking to a note they can't actually open.
+  %>
+  <% numbered_journals = issue.visible_journals_with_index(User.current).index_by(&:id) %>
+  <div class="custom-decrement-field-inconsistency-banner">
+    <p class="custom-decrement-field-inconsistency-banner-title">
+      <%= l(:text_custom_decrement_field_inconsistent_title) %>
+    </p>
+    <ul>
+      <% calculators.each do |calculator| %>
+        <li>
+          <strong><%= calculator.field.name %></strong>
+          <ul>
+            <% if calculator.negative? %>
+              <li><%= l(:text_custom_decrement_field_inconsistent_negative, value: calculator.value) %></li>
+            <% end %>
+            <% calculator.duplicate_literals.each do |literal, journals| %>
+              <li>
+                <%= l(:text_custom_decrement_field_inconsistent_duplicate, literal: literal) %>
+                <%
+                  links = journals.filter_map { |journal| numbered_journals[journal.id] }
+                                   .sort_by(&:indice)
+                                   .map { |journal| link_to("##{journal.indice}", "#note-#{journal.indice}") }
+                %>
+                <% if links.any? %>
+                  (<%= safe_join(links, ', ') %>)
+                <% end %>
+              </li>
+            <% end %>
+          </ul>
+        </li>
+      <% end %>
+    </ul>
+  </div>
+<% end %>

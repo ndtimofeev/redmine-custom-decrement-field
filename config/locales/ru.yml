@@ -5,6 +5,11 @@ ru:
   button_custom_decrement_field_decrement: "Декрементировать"
 
   label_decrementable_int: "Декрементируемое целое число"
+  label_custom_decrement_field_inconsistent: "История декрементируемого поля неконсистентна"
+  text_custom_decrement_field_inconsistent_title: "История декрементируемого поля этой задачи выглядит неконсистентной — вероятно, кто-то отредактировал или удалил комментарий напрямую, в обход кнопки списания."
+  text_custom_decrement_field_inconsistent_negative: "Текущее значение %{value} — меньше нуля, а это возможно только если комментарий со списанием был отредактирован или задублирован вручную."
+  text_custom_decrement_field_inconsistent_duplicate: "Одно и то же списание (%{literal}) было записано более одного раза"
+  text_custom_decrement_field_inconsistent_marker: "История этого поля неконсистентна — подробности в плашке над задачей"
   field_decrement_token: "Токен"
   field_zero_status_id: "Статус при обнулении"
   text_decrement_token_hint: "Ключевое слово, которое ищем в комментариях к задаче, например «MATSTOCK : -1» (пробелы вокруг двоеточия необязательны — распознаются оба варианта). Выбирайте то, что нормально читается — оно будет видно в истории комментариев."

@@ -15,6 +15,33 @@ module CustomDecrementField
 
     attr_reader :issue, :field, :config
 
+    # An issue's tracker can carry more than one decrementable field (see
+    # TokenConfig.fields_for_tracker) - these two class methods are the
+    # entry points for callers that care about "is anything on this issue
+    # inconsistent", without needing to know how many decrementable
+    # fields it actually has.
+    def self.calculators_for(issue)
+      TokenConfig.fields_for_tracker(issue.tracker).map { |field| new(issue, field) }
+    end
+
+    def self.inconsistent?(issue)
+      calculators_for(issue).any?(&:inconsistent?)
+    end
+
+    # Issues that could possibly be inconsistent at all - i.e. whose
+    # tracker has at least one configured decrementable field - out of
+    # +scope+ (defaults to every issue). #inconsistent_issue_ids uses this
+    # to bound how many issues it has to actually load journals for and
+    # run through #inconsistent? in Ruby, since that check has no SQL
+    # equivalent (see IssueQueryPatch for why, and why that's fine here).
+    def self.candidate_issues(scope = Issue.all)
+      scope.where(tracker_id: TokenConfig.tracker_ids_with_fields).includes(:journals)
+    end
+
+    def self.inconsistent_issue_ids(scope = Issue.all)
+      candidate_issues(scope).select { |issue| inconsistent?(issue) }.map(&:id)
+    end
+
     def enabled?
       config.present?
     end
@@ -69,6 +96,51 @@ module CustomDecrementField
       pattern = /#{Regexp.escape(config.token)}\s*:\s*[+-]?\d+\s+#{Regexp.escape(literal)}(?=\s|\z)/
 
       issue.journals.any? { |journal| journal.notes.present? && pattern.match?(journal.notes) }
+    end
+
+    # Every literal that shows up on more than one decrement in this
+    # field's history, mapped to every journal that carries it. Through
+    # the normal flow a literal can only ever reach history once - the
+    # controller refuses to write a second one (see #literal_used? and
+    # CustomDecrementFieldController#decrement) - so anything this finds
+    # can only have come from hand-editing or hand-duplicating a comment.
+    #
+    # The character class mirrors CustomDecrementFieldController's own
+    # #decrement_literal validation exactly (RFC 3986 "unreserved"
+    # characters), since that's the full set of literals the controller
+    # could ever have written in the first place.
+    def duplicate_literals
+      return {} unless enabled?
+
+      pattern = /#{Regexp.escape(config.token)}\s*:\s*[+-]?\d+\s+([A-Za-z0-9_.~-]+)/
+
+      by_literal = Hash.new { |h, k| h[k] = [] }
+      issue.journals.each do |journal|
+        next if journal.notes.blank?
+
+        journal.notes.scan(pattern).each { |(literal)| by_literal[literal] << journal }
+      end
+
+      by_literal.select { |_, journals| journals.size > 1 }
+    end
+
+    # Strictly negative, not <= 0 - see #exhausted? for why zero itself is
+    # a normal, reachable state and not a sign of anything wrong.
+    def negative?
+      enabled? && value.negative?
+    end
+
+    # The single question everywhere this plugin needs to ask "did this
+    # field's history get tampered with outside the normal button/
+    # controller flow" - a negative total and a duplicated literal are
+    # both only reachable by hand-editing a comment (see #negative? and
+    # #duplicate_literals), and there's no reason to tell them apart at
+    # the call sites that just need to flag or filter on "something here
+    # needs a human to look at it": the issue-page banner, the tracker's
+    # row highlighting in list views, and the query filter all just ask
+    # this one method.
+    def inconsistent?
+      negative? || duplicate_literals.any?
     end
 
     # We deliberately check <= 0 here, not == 0. The safe path (the

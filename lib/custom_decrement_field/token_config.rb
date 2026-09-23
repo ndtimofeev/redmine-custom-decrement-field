@@ -40,5 +40,25 @@ module CustomDecrementField
 
       tracker.custom_fields.select { |f| for_field(f) }
     end
+
+    # Every tracker that has at least one properly-configured
+    # decrementable field on it - used to bound the candidate set for the
+    # "inconsistent history" query filter (see StockCalculator.candidate_issues)
+    # to trackers where an issue could possibly be inconsistent at all,
+    # instead of scanning every issue in the database.
+    #
+    # decrement_token lives inside format_store (a serialized blob, see
+    # this file's own header comment), not a real column, so there's no
+    # SQL way to filter "fields with a token filled in" - loading every
+    # decrementable_int field and checking each in Ruby is fine, since
+    # there are only ever a handful of custom fields total, regardless of
+    # how many issues or trackers exist.
+    def self.tracker_ids_with_fields
+      IssueCustomField
+        .where(field_format: 'decrementable_int')
+        .select { |f| for_field(f) }
+        .flat_map { |f| f.trackers.pluck(:id) }
+        .uniq
+    end
   end
 end

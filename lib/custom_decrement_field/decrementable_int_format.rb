@@ -129,12 +129,19 @@ module CustomDecrementField
 
       issue = custom_value.customized
       return text unless issue.is_a?(Issue) && issue.persisted?
-      return text unless User.current.allowed_to?(:add_issue_notes, issue.project)
 
       calculator = CustomDecrementField::StockCalculator.new(issue, custom_value.custom_field)
       return text unless calculator.enabled?
 
-      view.safe_join([text.to_s, decrement_button(view, issue, custom_value.custom_field, calculator)])
+      # The marker is purely informational (the full explanation is the
+      # banner above the issue - see InconsistencyBannerHook), so unlike
+      # the button below it isn't gated on add_issue_notes: anyone who can
+      # see the field's value at all should be able to see that it's
+      # currently untrustworthy.
+      parts = [text.to_s]
+      parts << inconsistency_marker(view) if calculator.inconsistent?
+      parts << decrement_button(view, issue, custom_value.custom_field, calculator) if User.current.allowed_to?(:add_issue_notes, issue.project)
+      view.safe_join(parts)
     end
 
     # The only moment a human is meant to type a plain number directly
@@ -173,6 +180,19 @@ module CustomDecrementField
     end
 
     private
+
+    # A small warning glyph right next to the value itself - the banner
+    # above the issue (see InconsistencyBannerHook) carries the actual
+    # explanation; this just makes sure the problem is visible even to
+    # someone who only glances at the field, or who has the banner's
+    # section of the page scrolled out of view.
+    def inconsistency_marker(view)
+      view.content_tag(
+        :span, '⚠',
+        class: 'custom-decrement-field-inconsistency-marker',
+        title: l(:text_custom_decrement_field_inconsistent_marker)
+      )
+    end
 
     # A plain button_to - an ordinary HTML <form>, not a link with a
     # click handler - so it keeps working with JavaScript disabled, and
