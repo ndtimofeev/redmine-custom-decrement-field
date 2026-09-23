@@ -62,7 +62,14 @@ module CustomDecrementField
       return '1=1' if matches_inconsistent && matches_consistent
       return '1=0' if !matches_inconsistent && !matches_consistent
 
-      visible_scope = Issue.where(Issue.visible_condition(User.current))
+      # Issue.visible_condition's SQL references projects.status directly
+      # (see Project.allowed_to_condition) with no join of its own - it's
+      # meant to be layered onto a scope that already joins :project, the
+      # way Query#issues's own generated SQL always does. Without
+      # `.joins(:project)` here this 500s (verified against a live
+      # instance: "no such column: projects.status" on SQLite, and the
+      # equivalent ambiguous/missing-table error on other adapters).
+      visible_scope = Issue.joins(:project).where(Issue.visible_condition(User.current))
       inconsistent_ids = CustomDecrementField::StockCalculator.inconsistent_issue_ids(visible_scope)
 
       if matches_inconsistent

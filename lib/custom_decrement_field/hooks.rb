@@ -56,4 +56,56 @@ module CustomDecrementField
   class InconsistencyBannerHook < Redmine::Hook::ViewListener
     render_on :view_layouts_base_body_top, partial: 'custom_decrement_field/inconsistency_banner'
   end
+
+  # Editing a comment's text (including blanking it out entirely, which is
+  # how Redmine's web UI deletes one - see JournalsController#update:
+  # it saves the now-edited note, then destroys the journal outright if
+  # that leaves it with neither notes nor details) normally updates the
+  # page in place via JS (format.js), swapping just that one comment's own
+  # DOM node - deliberately, so editing/removing a comment elsewhere on a
+  # long history doesn't reload the whole page. But a decrementable
+  # field's value, its warning marker, the button's disabled state, and
+  # the inconsistency banner are all rendered server-side, as part of the
+  # surrounding page rather than that comment's own node, so none of them
+  # notice a change made this way until something re-renders the page -
+  # previously, that meant a manual reload.
+  #
+  # view_journals_update_js_bottom (called from
+  # app/views/journals/update.js.erb, verified against 6.0-stable source)
+  # fires once that in-place swap has already happened, with the
+  # journal - saved or destroyed - available as context[:journal].
+  #
+  # This only bothers reloading when the issue's own tracker has a
+  # decrementable field at all, not when the edited text can be shown to
+  # actually contain that field's token. An earlier version tried the
+  # more targeted check - comparing the note's text before and after the
+  # edit against the token - using Journal#notes_before_last_save, but
+  # that came back nil here even for a save that had just visibly
+  # persisted a real change (verified directly against a live instance:
+  # editing a journal's notes through this exact controller action, then
+  # inspecting notes_before_last_save from within this same hook,
+  # consistently returned nil rather than the pre-edit text). Rather than
+  # rely on that, this reloads on every comment edit/delete on a tracker
+  # that has a decrementable field, whether or not that particular
+  # comment's text ever mentioned one - a comment edit is not a frequent
+  # enough action for the occasional unnecessary reload to matter, and
+  # this is guaranteed correct rather than dependent on a Journal dirty-
+  # tracking API that didn't behave as documented here.
+  #
+  # A full reload, rather than trying to patch the value/marker/button/
+  # banner in place by hand, is a deliberate simplicity trade-off: it
+  # doesn't need to know or reproduce any of core's own markup for those
+  # (see decrementable_int_format.rb's own history for how fragile
+  # hand-matching Redmine's rendering has turned out to be elsewhere in
+  # this plugin).
+  class InconsistencyRefreshHook < Redmine::Hook::ViewListener
+    def view_journals_update_js_bottom(context = {})
+      journal = context[:journal]
+      issue = journal&.journalized
+      return '' unless issue.is_a?(Issue)
+      return '' if CustomDecrementField::TokenConfig.fields_for_tracker(issue.tracker).empty?
+
+      'window.location.reload();'
+    end
+  end
 end

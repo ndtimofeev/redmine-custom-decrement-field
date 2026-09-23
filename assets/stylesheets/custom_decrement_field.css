@@ -82,19 +82,23 @@ tr.issue.custom-decrement-field-inconsistent:not(.context-menu-selection) > td {
 }
 
 /* The Wikipedia-"marked for deletion"-style banner rendered above an
-   issue's own content on its show page (see InconsistencyBannerHook).
+   issue's own content on its show page (see InconsistencyBannerHook and
+   the partial's own comment on the script that moves it into #content).
    Colors reuse Redmine's own div.flash.warning palette (application.css)
-   for visual consistency with the rest of the app, but laid out as a
-   full-width bar rather than a boxed-in flash message, since it renders
-   outside #content/#wrapper entirely (see the hook's own comment for
-   why) and needs to look intentional there rather than like a stray,
-   narrow flash box floating above the page chrome. */
+   for visual consistency with the rest of the app. A full boxed callout,
+   not a full-bleed bar: it lives inside #content now, in the same column
+   as the issue's own heading and attributes, so it should read as
+   belonging to the ticket - a full-viewport-width strip would cut across
+   the page's own left padding and look like it belonged to the site
+   chrome instead. */
 .custom-decrement-field-inconsistency-banner {
   box-sizing: border-box;
   width: 100%;
+  margin-bottom: 1em;
   padding: 0.6em 1.5em;
   background-color: #F3EDD1;
-  border-bottom: 1px solid #eadbbc;
+  border: 1px solid #eadbbc;
+  border-radius: 4px;
   color: #A6750C;
   font-size: 0.9em;
 }

@@ -99,6 +99,19 @@ of a full page reload on click instead of an in-place AJAX update.
     the exact comments involved via Redmine's own `#note-N` anchors -
     filtered through `Issue#visible_journals_with_index` so a link never
     points at a private note the current viewer isn't allowed to see.
+    There is no hook that fires between the top of `#content` and the
+    issue's own heading (verified against 6.0-stable source), so the
+    banner actually renders via `view_layouts_base_body_top` - the only
+    hook that fires above any of a page's own content at all, but that
+    means literally the top of `<body>`, above Redmine's own top menu and
+    header too. The partial renders it there `hidden`, then a small
+    inline script moves it into `#content` (as the first child, ahead of
+    the issue's own heading) and reveals it once `DOMContentLoaded` fires
+    - `hidden` avoids a flash of the banner in the wrong place while the
+    rest of the page is still loading. With JavaScript disabled the
+    banner simply never appears; the marker next to the field's value,
+    the row highlighting, and the query filter below are all still fully
+    server-rendered and don't depend on it.
   - Affected issues get a `custom-decrement-field-inconsistent` CSS class
     on their row in list/query views (`IssueCssClassesPatch`, prepended
     onto `Issue#css_classes` - the same mechanism core itself uses for
@@ -120,7 +133,30 @@ of a full page reload on click instead of an in-place AJAX update.
     plugin's "no separate ledger" design throughout): this is meant for
     occasional auditing, not high-frequency access, so it starts as
     simple as possible and would only grow a cache if that ever proved
-    too slow in practice.
+    too slow in practice. The "current user can already see" scope has to
+    `.joins(:project)`: `Issue.visible_condition`'s SQL references
+    `projects.status` directly (see `Project.allowed_to_condition`),
+    assuming it's layered onto a scope that already joins `:project` the
+    way `Query#issues`'s own generated SQL always does - without that
+    join this 500s (an unqualified/missing-table column error, verified
+    directly against a live instance).
+  - Editing a comment's text through the web UI - including blanking it
+    out entirely, which is how Redmine deletes one (see
+    `JournalsController#update`) - normally patches just that comment's
+    own bit of the page via JS, without a full reload, so none of the
+    above (the marker, the button's state, the banner) update on their
+    own until something re-renders the page. `InconsistencyRefreshHook`
+    hangs a `window.location.reload()` off `view_journals_update_js_bottom`
+    (fired from `app/views/journals/update.js.erb`, verified against
+    6.0-stable source) whenever the edited journal's issue is on a
+    tracker that has a decrementable field at all - not a more targeted
+    "only if this comment's own text mentioned the token" check, since
+    `Journal#notes_before_last_save` came back `nil` even right after a
+    save that had visibly just changed `notes` (verified directly against
+    a live instance) - rather than depend on that, this reloads on every
+    comment edit/delete on such a tracker, and accepts the occasional
+    unnecessary reload as the cost of not depending on a Journal dirty-
+    tracking API that didn't behave as documented here.
 - No dedicated permission is introduced for decrementing. It reuses
   Redmine's own `add_issue_notes` permission, since a decrement is
   nothing more than a specially formatted comment. Undoing a mistaken
@@ -217,7 +253,11 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   "inconsistent history" query filter to `IssueQuery`.
 - `app/views/custom_decrement_field/_inconsistency_banner.html.erb` +
   `InconsistencyBannerHook` (in `hooks.rb`) - the banner rendered above
-  an inconsistent issue's own content.
+  an inconsistent issue's own content, and the script that moves it
+  there from `view_layouts_base_body_top`'s actual render position.
+- `InconsistencyRefreshHook` (in `hooks.rb`) - reloads the page after a
+  comment edit/delete on a tracker with a decrementable field, so the
+  marker/button/banner don't need a manual reload to catch up.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
   below zero, and now also refuses a duplicate of an already-recorded

@@ -28,7 +28,17 @@
     of linking to a note they can't actually open.
   %>
   <% numbered_journals = issue.visible_journals_with_index(User.current).index_by(&:id) %>
-  <div class="custom-decrement-field-inconsistency-banner">
+  <%#
+    Rendered `hidden`, then moved into #content and revealed by the
+    script below, once the DOM has actually parsed that far - see the
+    script's own comment for why this can't just render there directly.
+    Hiding it until that move (rather than leaving it visible where it
+    lands via view_layouts_base_body_top - the very top of <body>, above
+    even Redmine's own top menu and header) is what keeps a page load
+    from ever showing the banner in the wrong place for an instant before
+    JS relocates it.
+  %>
+  <div id="custom-decrement-field-inconsistency-banner" class="custom-decrement-field-inconsistency-banner" hidden>
     <p class="custom-decrement-field-inconsistency-banner-title">
       <%= l(:text_custom_decrement_field_inconsistent_title) %>
     </p>
@@ -58,4 +68,39 @@
       <% end %>
     </ul>
   </div>
+  <%#
+    view_layouts_base_body_top (see hooks.rb) is the only hook that fires
+    above any of a page's own content at all - but that puts this banner
+    above Redmine's own top menu and header too, not just above the
+    issue, which reads as the banner belonging to the whole application
+    rather than to this one ticket. There is no hook that fires later -
+    specifically between the top of #content and the issue's own heading
+    (verified against 6.0-stable's app/views/layouts/base.html.erb and
+    app/views/issues/show.html.erb - see hooks.rb's own comment) - so this
+    moves the banner there itself once the DOM includes #content, rather
+    than rendering it there to begin with.
+
+    DOMContentLoaded, not immediately: at the point this script tag is
+    parsed, #content does not exist yet in the DOM (base.html.erb draws
+    it much later than <body>'s own opening tag) - `content` below would
+    be null and the move would silently fail.
+
+    If JavaScript is disabled or blocked, this banner simply never
+    appears - that is an accepted degradation, not a silent failure to
+    warn: the small marker next to the field's own value
+    (DecrementableIntFormat#inconsistency_marker), the row highlighting
+    in list/query views (IssueCssClassesPatch), and the query filter
+    (IssueQueryPatch) are all still fully server-rendered and need no
+    JavaScript at all.
+  %>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var banner = document.getElementById('custom-decrement-field-inconsistency-banner');
+      if (!banner) return;
+
+      var content = document.getElementById('content');
+      if (content) content.insertBefore(banner, content.firstChild);
+      banner.hidden = false;
+    });
+  </script>
 <% end %>
