@@ -3,7 +3,14 @@ module CustomDecrementField
   # multiplier). Counts are the children's already-persisted values; the
   # multipliers are declared in the PARENT's own comments:
   #
-  #   STOCKMULT : #57 : 0.5      (point or comma decimal, last one wins)
+  #   PACK : #57 : 0,5 bottle 0.5 l, 12 to a box
+  #
+  # TOKEN : #<child id> : <multiplier> [comment]. The multiplier takes a point
+  # or a comma decimal; for one child the last declaration wins. Everything
+  # after the multiplier up to the end of the line is a free-form note for the
+  # storekeeper, never interpreted. It is consumed by the pattern itself, not
+  # merely skipped over, so text inside it that happens to look like another
+  # declaration ("see PACK : #12 : 3") is not picked up as one.
   #
   # A child nobody mentions counts x1.
   class SumCalculator
@@ -36,7 +43,7 @@ module CustomDecrementField
     def multipliers
       return {} unless config.multiplier_token
 
-      pattern = /#{Regexp.escape(config.multiplier_token)}\s*:\s*#(\d+)\s*:\s*(\d+(?:[.,]\d+)?)/
+      pattern = /#{Regexp.escape(config.multiplier_token)}\s*:\s*#(\d+)\s*:\s*(\d+(?:[.,]\d+)?)[^\r\n]*/
       issue.journals.reorder(:created_on, :id).each_with_object({}) do |journal, found|
         next if journal.notes.blank?
 

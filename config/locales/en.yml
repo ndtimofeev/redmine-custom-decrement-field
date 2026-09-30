@@ -22,5 +22,5 @@ en:
   text_watched_field_hint: "The ticket is highlighted once the watched field is at or below this field's value. Both fields must be attached to the same tracker."
   field_source_field: "Children's field to sum"
   field_multiplier_token: "Multiplier token"
-  text_multiplier_token_hint: "Optional. A comment on this ticket like \"TOKEN : #57 : 0.5\" makes child #57 count 0.5 per unit; children not mentioned count 1."
+  text_multiplier_token_hint: "Optional, e.g. PACK. A comment on this ticket like \"PACK : #57 : 0.5 bottle 0.5 l\" makes child #57 count 0.5 per unit; whatever follows the number is a note for the storekeeper and is ignored. Children not mentioned count 1."
   text_sum_readonly_hint: "Computed from the child tickets and not editable."

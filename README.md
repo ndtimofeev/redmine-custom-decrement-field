@@ -168,10 +168,21 @@ of a full page reload on click instead of an in-place AJAX update.
     `multiplier_token`.
   - **Per-child multipliers live in the parent's comments**, same philosophy
     as everything else here (history in comments, nothing separate to drift):
-    `STOCKMULT : #57 : 0,5` makes child #57 count 0.5 per unit (point or
-    comma decimal). Only the parent knows how a child's whole units add up
+    `PACK : #57 : 0,5 bottle 0.5 l, 12 to a box` makes child #57 count 0.5 per
+    unit. The grammar is `TOKEN : #<child id> : <multiplier> [comment]`: the
+    multiplier takes a point or comma decimal, and everything after it to the
+    end of the line is a free-form note for the storekeeper that the system
+    never interprets - the pattern consumes it, so text inside it that looks
+    like another declaration is not picked up as one. `PACK` is only the
+    suggested keyword (the admin form's placeholder); it is a per-field
+    setting and nothing in the plugin hardcodes it. Latin on purpose:
+    Cyrillic look-alikes (A/A, C/C, P/P, X/X) are typed by mistake and read
+    identically, which would silently turn a declaration off. Only the parent
+    knows how a child's whole units add up
     in the parent's unit (20 bottles of solvent may be wanted in liters, kg
-    or pounds - add one sum field per unit, each with its own token). A
+    or pounds - add one sum field per unit, each with its own token, e.g.
+    `PACK_L` and `PACK_KG`; a token only matches when followed by the colon,
+    so neither is taken for the other). A
     child nobody mentions counts x1. The last declaration for a child wins -
     it's a current fact, not an event like a decrement - so, unlike a
     duplicated decrement literal, repeating one is not an inconsistency.
