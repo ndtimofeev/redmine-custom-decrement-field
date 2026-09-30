@@ -3,7 +3,7 @@ class CustomDecrementFieldController < ApplicationController
   before_action :find_field
   before_action :require_write_permission
 
-  # The button (and any future QR-code flow) always decrements by exactly
+  # The button (and any future QR-code flow) always writes off exactly
   # 1 unit. Arbitrary amounts are only ever possible by hand-editing a
   # comment's text directly, and that is deliberately never exposed
   # anywhere in the UI: that path bypasses the concurrency-safe
@@ -57,9 +57,7 @@ class CustomDecrementFieldController < ApplicationController
       # a later request can find it again via
       # StockCalculator#literal_used? - it plays no part in computing
       # the value itself.
-      note = "#{calculator.config.token} : -#{DECREMENT_AMOUNT}"
-      note = "#{note} #{literal}" if literal
-      @issue.init_journal(User.current, note)
+      @issue.init_journal(User.current, calculator.config.decrement_note(DECREMENT_AMOUNT, literal))
       @issue.save!
 
       # Re-read after save! rather than doing simple arithmetic

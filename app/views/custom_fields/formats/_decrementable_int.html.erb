@@ -3,12 +3,16 @@
     custom_fields_helper.rb#render_custom_field_format_partial, the same
     seam every core format (Numeric, List, Version, ...) uses for its own
     extra settings. `f` is bound to the CustomField instance itself, so
-    these two fields read/write custom_field.decrement_token and
-    custom_field.zero_status_id directly - both backed by the
+    these fields read/write custom_field.increment_token,
+    custom_field.decrement_token and custom_field.zero_status_id directly - both backed by the
     format_store column via the field_attributes declaration in
     DecrementableIntFormat, no separate controller/model needed. %>
 <p>
-  <%= f.text_field :decrement_token, size: 30, label: :field_decrement_token %>
+  <%= f.text_field :increment_token, size: 30, placeholder: 'PRIHOD', label: :field_increment_token %>
+  <em class="info"><%= l(:text_increment_token_hint) %></em>
+</p>
+<p>
+  <%= f.text_field :decrement_token, size: 30, placeholder: 'RASHOD', label: :field_decrement_token %>
   <em class="info"><%= l(:text_decrement_token_hint) %></em>
 </p>
 <p>

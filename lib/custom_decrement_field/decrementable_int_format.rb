@@ -55,15 +55,16 @@ module CustomDecrementField
     # for its own extra settings the same way.
     self.form_partial = 'custom_fields/formats/decrementable_int'
 
-    # Declares :decrement_token and :zero_status_id as ordinary
-    # custom_field.decrement_token / custom_field.zero_status_id
+    # Declares :increment_token, :decrement_token and :zero_status_id as
+    # ordinary custom_field.increment_token / decrement_token /
+    # zero_status_id
     # accessors, backed by the format_store column - this is the exact
     # same mechanism core formats use for e.g. Numeric's
     # thousands_delimiter or Version's version_status. Per-instance
     # settings, no new table, no migration.
-    field_attributes :decrement_token, :zero_status_id
+    field_attributes :increment_token, :decrement_token, :zero_status_id
 
-    # field_attributes only makes decrement_token/zero_status_id exist as
+    # field_attributes only makes the three settings exist as
     # methods on CustomField - it says nothing about whether they may be
     # mass-assigned. CustomField#safe_attributes is Redmine's own
     # whitelist (a hardcoded list of attribute names in
@@ -78,7 +79,7 @@ module CustomDecrementField
     # Redmine's safe_attributes macro accumulates rather than replaces
     # (each call appends to the class's own list), so this adds our two
     # names to the existing core list instead of needing to duplicate it.
-    CustomField.safe_attributes 'decrement_token', 'zero_status_id'
+    CustomField.safe_attributes 'increment_token', 'decrement_token', 'zero_status_id'
 
     def label
       'label_decrementable_int'

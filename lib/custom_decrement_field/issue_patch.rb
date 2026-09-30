@@ -97,7 +97,7 @@ module CustomDecrementField
         next if amount.zero? # nothing typed (or explicitly zero) - no history entry needed
 
         config = CustomDecrementField::TokenConfig.for_field(field)
-        "#{config.token} : #{amount}"
+        amount.positive? ? config.increment_note(amount) : config.decrement_note(amount.abs)
       end
 
       return if notes_lines.empty?
@@ -129,6 +129,17 @@ module CustomDecrementField
 
       @custom_decrement_field_processing = true
       begin
+        # Core's create_journal runs before our after_save callbacks, but it
+        # builds the Journal with `journalized: self` rather than through
+        # `journals.build`, and has_many_inversing is off - so a `journals`
+        # association that was already loaded on this instance (the decrement
+        # controller loads it to check the current value before writing) does
+        # not contain the journal this very save just created. Recomputing
+        # from that cache leaves the stored value one entry behind, and the
+        # zero-status transition one entry late. Dropping the cache makes the
+        # recalculation read the history as it is now.
+        journals.reset
+
         CustomDecrementField::TokenConfig.fields_for_tracker(tracker).each do |field|
           custom_decrement_field_recalculate(field)
         end

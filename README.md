@@ -41,18 +41,17 @@ of a full page reload on click instead of an in-place AJAX update.
   absence is enforced is Administration &rarr; Custom fields: Redmine
   refuses to re-save a field's *own* definition while its format is
   unregistered, until you pick a different format there.
-- Per-field settings (the token to look for, and an optional status the
-  issue should move to once the counter reaches zero) are not stored in
+- Per-field settings (the two keywords to look for, and an optional status
+  the issue should move to once the counter reaches zero) are not stored in
   a table owned by this plugin. They're declared as `format_store`
-  attributes (`field_attributes :decrement_token, :zero_status_id` in
-  `DecrementableIntFormat`) - the same built-in per-format storage
+  attributes (`field_attributes :increment_token, :decrement_token,
+  :zero_status_id` in `DecrementableIntFormat`) - the same built-in per-format storage
   mechanism core uses for e.g. Numeric's thousands separator or
   Version's status filter - and rendered right on the field's own admin
   edit form via `form_partial`. No plugin-owned schema at all.
-- The field's value is **always derived**: it equals the sum of every
-  signed number tagged with the field's token across the issue's
-  comments, including the very first entry - "how many units did we
-  start with". There is no separate field for the initial quantity:
+- The field's value is **always derived**: it equals everything added minus
+  everything written off across the issue's comments, including the very
+  first entry - "how many units did we start with". There is no separate field for the initial quantity:
   whatever number a user types into the field on issue creation is
   automatically turned into that first comment
   (`IssuePatch#custom_decrement_field_seed`), and from that point on the
@@ -62,26 +61,58 @@ of a full page reload on click instead of an in-place AJAX update.
   invite editing it), and `IssuePatch#custom_decrement_field_recalculate`
   silently overwrites whatever was submitted anyway on every save - the
   second one is the real guarantee, the first is just honest UI.
-- **The token grammar**: `TOKEN : <signed integer>`, optionally followed
-  by a trailing literal - `TOKEN : -1 xyz123`. Every writer in this
-  plugin (the seed, the decrement controller) now produces the spaced
-  form consistently, but `StockCalculator#value`'s own regex stays
-  permissive on both sides of the colon (`TOKEN:-1` still counts) so
-  existing history, or a hand-typed comment, isn't silently excluded.
-  The optional literal is free-form data made only of characters that
-  never need percent-encoding in a URL (RFC 3986's "unreserved" set) -
-  supplied by `POST .../decrement`'s optional `literal` param, and
-  otherwise absent (this is all opt-in; nothing about the field's own
-  behavior changes if no caller ever uses it). If a caller supplies one
-  that already appears in this field's history
-  (`StockCalculator#literal_used?`), the request short-circuits to "this
-  already happened" (`error_custom_decrement_field_duplicate_literal`)
-  instead of decrementing again - meant for exactly the kind of caller
-  that can't always tell whether its own previous request actually
-  landed (a network retry, a double-tap before a button could disable
-  itself, the same code scanned twice within a moment of itself) and
-  wants to say so explicitly rather than relying on being fast enough to
-  avoid it.
+- **Two keywords, one grammar**: `KEYWORD : <amount> [literal]`, where
+  KEYWORD is the field's **add keyword** (`PRIHOD : 10` adds ten) or its
+  **write-off keyword** (`RASHOD : 1` writes one off). The keyword alone
+  decides the direction, so the amount is always written as a plain positive
+  number, and any sign typed in front of it is ignored - `RASHOD : -1` still
+  writes one off and never adds one back, so a habit from when the single
+  token was signed can't silently flip a write-off into an addition. Both
+  keywords are required and must differ (a field missing one, or with the
+  same word for both, is treated like a field the plugin has never heard of;
+  saving such a pair is refused in the admin form). `PRIHOD`/`RASHOD` are
+  just the suggested words (the form's placeholders); pick whatever reads
+  naturally - the words show up in the comment history. Latin is safer than
+  Cyrillic for the same look-alike reason as the multiplier keyword below.
+  Every writer in this plugin produces the spaced form (`TOKEN : 1`), but the
+  parser stays permissive about the colon's whitespace (`RASHOD:1` counts).
+  The initial amount typed on a new issue is recorded under the add keyword.
+  - `StockCalculator#entries` is the one place that knows this grammar;
+    the value, the duplicate check and the inconsistency check are all
+    derived from it.
+  - The optional literal is free-form data made only of characters that
+    never need percent-encoding in a URL (RFC 3986's "unreserved" set) -
+    supplied by `POST .../decrement`'s optional `literal` param, and
+    otherwise absent (this is all opt-in). It has to sit on the **same
+    line** as the amount and be followed by whitespace or the end of the
+    text; a word on the next line is not a literal. If a caller supplies
+    one that already appears in this field's history
+    (`StockCalculator#literal_used?`), the request short-circuits to "this
+    already happened" (`error_custom_decrement_field_duplicate_literal`)
+    instead of writing off again - meant for exactly the kind of caller
+    that can't always tell whether its own previous request actually
+    landed (a network retry, a double-tap before a button could disable
+    itself, the same code scanned twice within a moment of itself). One
+    namespace across both keywords, so a delivery-note number used as the
+    literal of an addition (`PRIHOD : 5 delivery-42`) is protected the same
+    way.
+  - Recalculation reads the history as it is *now*. Core's `create_journal`
+    builds the journal with `journalized: self` and `has_many_inversing` is
+    off, so a `journals` association already loaded on the issue - the
+    decrement controller loads it to check the current value before writing -
+    doesn't contain the journal the very same save just created. Computing
+    from that cache left the stored value one entry behind (and the
+    zero-status transition one entry late), so the recalculation starts by
+    dropping it (`journals.reset`).
+  - **Migrating a field that has only the old single token.** That token is
+    now the write-off keyword, and the field stays inert (no button, no
+    recalculation) until the add keyword is filled in too. Old history is
+    *not* reinterpreted for you: lines written under the old token as
+    `TOKEN : -1` keep counting as write-offs (the sign is ignored), but the
+    old positive lines - typically the initial amount - would now count as
+    write-offs as well, so edit those comments to start with the new add
+    keyword. Nothing is recomputed when the field is saved; each issue picks
+    the new meaning up on its next save or comment.
 - **Detecting an inconsistent history.** The safe path (button/controller)
   can never produce a negative value or a repeated `literal` on its own -
   both are only reachable by hand-editing or duplicating a comment
@@ -275,10 +306,10 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
    pick **"Decrementable integer"** directly from the Format dropdown
    (it's a real option now, not a step performed after the fact). Give
    it a name, attach it to the tracker(s) it should appear on, and fill
-   in the two extra fields this format adds to the form: a **Token**
-   (a short keyword such as `MATSTOCK` - pick something that reads
-   naturally, since it will show up in the comment history) and,
-   optionally, a **Status on reaching zero**.
+   in the extra fields this format adds to the form: an **Add keyword**
+   and a **Write-off keyword** (short, different words such as `PRIHOD` and
+   `RASHOD` - pick something that reads naturally, since they show up in
+   the comment history) and, optionally, a **Status on reaching zero**.
 
    Two core Redmine defaults that make a new field look like it "isn't
    displayed anywhere", and apply to every custom field, this plugin's or
@@ -296,7 +327,7 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 
 5. **Verify it works**: create a new issue on that tracker, type a
    number into the field, and save. The issue's history should show a
-   comment containing your token, and the field should still show the
+   comment like `PRIHOD : <your number>`, and the field should still show the
    same number; opening the issue again for editing, the field should
    now render read-only. Open the issue's own page - you should see a
    "&minus;1" button next to the field; click it and confirm the field
@@ -309,10 +340,11 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   the "Decrementable integer" format, its per-field settings, and the
   read-only editing behavior.
 - `app/views/custom_fields/formats/_decrementable_int.html.erb` - the
-  Token / Status-on-zero fields shown on the custom field's own admin
-  edit form.
+  Add keyword / Write-off keyword / Status-on-zero fields shown on the
+  custom field's own admin edit form.
 - `lib/custom_decrement_field/token_config.rb` - reads a decrementable
-  field's token/zero-status settings.
+  field's two keywords and zero-status setting (and builds the notes the
+  plugin writes).
 - `lib/custom_decrement_field/stock_calculator.rb` - computes the
   current value from comment history.
 - `lib/custom_decrement_field/issue_patch.rb` - seeds the first history

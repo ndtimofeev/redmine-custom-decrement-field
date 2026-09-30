@@ -1,8 +1,8 @@
 module CustomDecrementField
   # The single source of truth for a decrementable field's value is the
   # current text of the issue's journal notes - never a separately
-  # maintained counter. Editing or deleting a comment that contains the
-  # token changes the result on its own, the next time anything triggers a
+  # maintained counter. Editing or deleting a comment that contains one of
+  # the field's keywords changes the result on its own, the next time anything triggers a
   # recalculation (see IssuePatch and JournalPatch). There is no separate
   # decrement log to keep in sync, and therefore nothing that can drift
   # out of sync with it.
@@ -46,82 +46,88 @@ module CustomDecrementField
       config.present?
     end
 
-    # Sums every occurrence of "<token>:<signed integer>" across every
-    # journal note currently attached to the issue. This intentionally
-    # re-scans the full history on every call rather than maintaining a
-    # running total, because the whole point of this design is that
-    # editing or deleting a past comment must change the result - a cached
-    # running total, updated incrementally, would never notice either of
-    # those on its own.
+    # One line of history: how much it moved the stock (positive for an
+    # addition, negative for a write-off), the optional literal riding on it,
+    # and the journal it was found in.
+    Entry = Struct.new(:delta, :literal, :journal)
+
+    # Characters a literal may consist of - RFC 3986's "unreserved" set, the
+    # same one CustomDecrementFieldController#decrement_literal accepts, so
+    # this is the full set of literals the controller could ever have written.
+    LITERAL = '[A-Za-z0-9_.~-]+'.freeze
+
+    # Every entry currently in the issue's history, in no particular order.
+    # This is the single place that knows the grammar
     #
-    # The colon's surrounding whitespace is optional on both sides - "a:1",
-    # "a : 1", "a:  1" all match - even though every writer in this plugin
-    # now produces "a : 1" (spaced) consistently; this stays permissive so
-    # existing history written before that, or a hand-typed comment,
-    # doesn't silently stop counting. A decrement can also carry an
-    # optional trailing literal (see #literal_used?) - "a : -1 xyz123" -
-    # which this pattern doesn't need to know anything about: it only
-    # captures the number, and scan() finds that regardless of whatever
-    # non-matching text follows it on the same line.
-    def value
-      return 0 unless enabled?
+    #   KEYWORD : <amount> [literal]
+    #
+    # where KEYWORD is the field's add keyword or its write-off keyword. The
+    # keyword alone decides the direction, so any sign typed in front of the
+    # amount is ignored ("RASHOD : -1" still writes one off, never adds one
+    # back - a habit from when the single token was signed must not silently
+    # flip a write-off into an addition). The literal has to sit on the same
+    # line as the amount, and is only recognised when followed by whitespace
+    # or the end of the text, so a plain "RASHOD : 1" followed by a line that
+    # happens to start with a word doesn't get that word taken for a literal.
+    #
+    # The colon's surrounding whitespace is optional on both sides ("a:1",
+    # "a : 1"), even though every writer in this plugin produces the spaced
+    # form; that keeps hand-typed comments counting.
+    #
+    # Re-scans the full history on every call rather than keeping a running
+    # total, because the whole point of this design is that editing or
+    # deleting a past comment must change the result - a cached total,
+    # updated incrementally, would never notice either of those on its own.
+    def entries
+      return [] unless enabled?
 
-      pattern = /#{Regexp.escape(config.token)}\s*:\s*([+-]?\d+)/
+      keywords = [config.increment_token, config.decrement_token].map { |k| Regexp.escape(k) }.join('|')
+      pattern = /(?<keyword>#{keywords})\s*:\s*[+-]?(?<amount>\d+)(?:[ \t]+(?<literal>#{LITERAL})(?=\s|\z))?/
 
-      issue.journals.sum do |journal|
-        next 0 if journal.notes.blank?
+      issue.journals.flat_map do |journal|
+        next [] if journal.notes.blank?
 
-        journal.notes.scan(pattern).sum { |m| m.first.to_i }
+        journal.notes.to_enum(:scan, pattern).map do
+          match = Regexp.last_match
+          amount = match[:amount].to_i
+          Entry.new(match[:keyword] == config.increment_token ? amount : -amount, match[:literal], journal)
+        end
       end
     end
 
-    # True if a decrement carrying this exact literal already appears in
-    # this field's history. The literal is free-form data supplied by
-    # whatever posted the decrement (see
+    def value
+      entries.sum(&:delta)
+    end
+
+    # True if an entry carrying this exact literal is already in the history.
+    # The literal is free-form data supplied by whatever posted the entry (see
     # CustomDecrementFieldController#decrement) - typically a one-off
-    # reference that caller generates for exactly this purpose, so a
-    # retried or duplicated request (a network retry, a double-tap before
-    # a button could disable itself, the same code scanned twice within a
-    # moment of itself) can be recognized as "this already happened"
-    # instead of silently decrementing a second time.
+    # reference that caller generates for exactly this purpose, so a retried
+    # or duplicated request (a network retry, a double-tap before a button
+    # could disable itself, the same code scanned twice within a moment of
+    # itself) can be recognized as "this already happened" instead of being
+    # applied a second time. One namespace across both keywords: a delivery
+    # note number used as the literal of an addition is protected the same
+    # way a scan id on a write-off is.
     #
-    # Matches on the literal's presence alone, not the amount next to it -
-    # a genuine duplicate of the same request would carry the same amount
-    # anyway, so there is nothing extra to gain from also comparing it,
-    # and it keeps this method usable regardless of whether the amount is
-    # ever anything other than DECREMENT_AMOUNT's -1.
+    # Matches on the literal's presence alone, not the amount next to it - a
+    # genuine duplicate of the same request would carry the same amount
+    # anyway.
     def literal_used?(literal)
       return false unless enabled? && literal.present?
 
-      pattern = /#{Regexp.escape(config.token)}\s*:\s*[+-]?\d+\s+#{Regexp.escape(literal)}(?=\s|\z)/
-
-      issue.journals.any? { |journal| journal.notes.present? && pattern.match?(journal.notes) }
+      entries.any? { |entry| entry.literal == literal }
     end
 
-    # Every literal that shows up on more than one decrement in this
-    # field's history, mapped to every journal that carries it. Through
-    # the normal flow a literal can only ever reach history once - the
-    # controller refuses to write a second one (see #literal_used? and
-    # CustomDecrementFieldController#decrement) - so anything this finds
-    # can only have come from hand-editing or hand-duplicating a comment.
-    #
-    # The character class mirrors CustomDecrementFieldController's own
-    # #decrement_literal validation exactly (RFC 3986 "unreserved"
-    # characters), since that's the full set of literals the controller
-    # could ever have written in the first place.
+    # Every literal that shows up on more than one entry, mapped to every
+    # journal that carries it. Through the normal flow a literal can only ever
+    # reach history once - the controller refuses to write a second one (see
+    # #literal_used?) - so anything this finds can only have come from
+    # hand-editing or hand-duplicating a comment.
     def duplicate_literals
-      return {} unless enabled?
-
-      pattern = /#{Regexp.escape(config.token)}\s*:\s*[+-]?\d+\s+([A-Za-z0-9_.~-]+)/
-
-      by_literal = Hash.new { |h, k| h[k] = [] }
-      issue.journals.each do |journal|
-        next if journal.notes.blank?
-
-        journal.notes.scan(pattern).each { |(literal)| by_literal[literal] << journal }
-      end
-
-      by_literal.select { |_, journals| journals.size > 1 }
+      entries.select(&:literal).group_by(&:literal)
+             .select { |_, found| found.size > 1 }
+             .transform_values { |found| found.map(&:journal) }
     end
 
     # Strictly negative, not <= 0 - see #exhausted? for why zero itself is
@@ -147,8 +153,8 @@ module CustomDecrementField
     # decrement button/controller) can never push the value below zero,
     # since it refuses to act once this predicate is already true. A
     # negative value can therefore only appear through the unsafe path -
-    # someone hand-editing a comment to contain a larger negative number
-    # than what was actually left. When that happens, the field should
+    # someone hand-editing a comment to contain a larger write-off than
+    # what was actually left. When that happens, the field should
     # behave exactly like "out of stock" everywhere the
     # calculator is consulted (button disabled, zero-status transition
     # fires), while still visibly showing the negative number rather than
