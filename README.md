@@ -187,6 +187,12 @@ of a full page reload on click instead of an in-place AJAX update.
     parent's (its count is one of the terms). Two extra hooks cover a child
     moved to another parent (the old parent is refreshed) and a destroyed
     child.
+  - Those triggers are all events on *issues*. Adding the field to a tracker
+    that already has parents, re-attaching it, or changing its source field
+    or multiplier token is an event on the *field*, which they never see -
+    existing parents would show an empty value until someone touched them.
+    `CustomFieldPatch` therefore recomputes the field for every issue of its
+    trackers whenever it is saved.
 - **The watchdog** (`watchdog` format, `WatchdogFormat`). A plain editable
   Float - the critical level - plus one setting, `watched_field_id`: which
   other numeric field of the same issue it watches (Integer, Float,
@@ -263,6 +269,14 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
    naturally, since it will show up in the comment history) and,
    optionally, a **Status on reaching zero**.
 
+   Two core Redmine defaults that make a new field look like it "isn't
+   displayed anywhere", and apply to every custom field, this plugin's or
+   not: a new issue field is **not** "For all projects" until you tick that
+   box (otherwise enable it per project under Settings &rarr; Issue tracking),
+   and it is not offered as a query filter until "Used as a filter" is ticked.
+   For the sum and watchdog fields, also attach them to the parent tracker
+   (and the watchdog and the field it watches to the *same* tracker).
+
 4. *(Optional, cosmetic)* Note that the Format dropdown itself is
    disabled by Redmine once the field exists, so there's no "convert
    this field back to a plain integer" option through the normal UI -
@@ -316,6 +330,8 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   `app/views/custom_fields/formats/_decrement_sum.html.erb` - the sum field:
   format and its admin-form partial, settings reader, the calculation, and
   writing the result back.
+- `lib/custom_decrement_field/custom_field_patch.rb` - recomputes a sum field
+  for all issues of its trackers when the field itself is saved.
 - `lib/custom_decrement_field/watchdog_format.rb`, `watchdog_config.rb`,
   `watchdog_check.rb` + `app/views/custom_fields/formats/_watchdog.html.erb` -
   the watchdog: format and its admin-form partial, the watched-field lookup,
