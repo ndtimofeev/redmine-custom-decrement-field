@@ -12,9 +12,9 @@ module CustomDecrementField
   module IssueCssClassesPatch
     def css_classes(user=User.current)
       classes = super
-      return classes unless CustomDecrementField::StockCalculator.inconsistent?(self)
-
-      "#{classes} custom-decrement-field-inconsistent"
+      classes = "#{classes} custom-decrement-field-inconsistent" if CustomDecrementField::StockCalculator.inconsistent?(self)
+      classes = "#{classes} custom-decrement-field-low" if CustomDecrementField::WatchdogCheck.barking?(self)
+      classes
     end
   end
 end

@@ -1,0 +1,9 @@
+<p>
+  <%= f.select :source_field_id,
+        IssueCustomField.where(field_format: 'decrementable_int').order(:name).map { |cf| [cf.name, cf.id.to_s] },
+        { label: :field_source_field } %>
+</p>
+<p>
+  <%= f.text_field :multiplier_token, size: 30, label: :field_multiplier_token %>
+  <em class="info"><%= l(:text_multiplier_token_hint) %></em>
+</p>

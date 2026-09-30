@@ -1,0 +1,6 @@
+<p>
+  <%= f.select :watched_field_id,
+        CustomDecrementField::WatchdogConfig.candidate_fields(f.object).map { |cf| [cf.name, cf.id.to_s] },
+        { include_blank: true, label: :field_watched_field } %>
+  <em class="info"><%= l(:text_watched_field_hint) %></em>
+</p>

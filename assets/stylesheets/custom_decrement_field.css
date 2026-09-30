@@ -111,3 +111,13 @@ tr.issue.custom-decrement-field-inconsistent:not(.context-menu-selection) > td {
 .custom-decrement-field-inconsistency-banner ul {
   margin: 0;
 }
+
+/* A watchdog field's threshold has been reached (see WatchdogCheck). Same
+   whole-row treatment as "inconsistent", different color. */
+tr.issue.custom-decrement-field-low:not(.context-menu-selection) > td {
+  background-color: #ffeccc;
+}
+
+div.issue.custom-decrement-field-low {
+  border-left: 4px solid #e67e22;
+}

@@ -35,6 +35,10 @@ module CustomDecrementField
         # why after_create is too early for that.
         after_save :custom_decrement_field_seed
         after_save :custom_decrement_field_recalculate_all
+        # Both run after the recalculation above, so the parent's sum reads
+        # this issue's freshly stored value.
+        after_save :custom_decrement_field_refresh_previous_parent
+        after_destroy :custom_decrement_field_refresh_parent
       end
     end
 
@@ -128,9 +132,25 @@ module CustomDecrementField
         CustomDecrementField::TokenConfig.fields_for_tracker(tracker).each do |field|
           custom_decrement_field_recalculate(field)
         end
+        # Sum fields: this issue's own (its comments hold the multipliers)
+        # and its parent's (this issue's count is one of the terms).
+        CustomDecrementField::SumRecalculation.cascade(self)
       ensure
         @custom_decrement_field_processing = false
       end
+    end
+
+    # Moved to another parent (or detached): the parent it left no longer
+    # contains this issue, and nothing else would tell it so.
+    def custom_decrement_field_refresh_previous_parent
+      return unless saved_change_to_parent_id?
+
+      previous_id = saved_change_to_parent_id.first
+      CustomDecrementField::SumRecalculation.refresh(Issue.find_by(id: previous_id)) if previous_id
+    end
+
+    def custom_decrement_field_refresh_parent
+      CustomDecrementField::SumRecalculation.refresh(Issue.find_by(id: parent_id)) if parent_id
     end
 
     def custom_decrement_field_recalculate(field)

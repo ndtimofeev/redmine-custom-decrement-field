@@ -157,6 +157,59 @@ of a full page reload on click instead of an in-place AJAX update.
     comment edit/delete on such a tracker, and accepts the occasional
     unnecessary reload as the cost of not depending on a Journal dirty-
     tracking API that didn't behave as documented here.
+- **Stock kept as several child tickets: the sum field** (`decrement_sum`
+  format, `SumFormat`). A parent ticket (Redmine's native parent/child, direct
+  children only) shows the total of its children's decrementable field. The
+  value is always derived and never typed (`edit_tag` is disabled), but - like
+  the decrementable field itself - it is persisted in `custom_values`, so
+  filters, sorting, CSV and the watchdog below treat it as an ordinary number.
+  - Per-field settings (`format_store`): `source_field_id` (which
+    decrementable field of the children to add up) and an optional
+    `multiplier_token`.
+  - **Per-child multipliers live in the parent's comments**, same philosophy
+    as everything else here (history in comments, nothing separate to drift):
+    `STOCKMULT : #57 : 0,5` makes child #57 count 0.5 per unit (point or
+    comma decimal). Only the parent knows how a child's whole units add up
+    in the parent's unit (20 bottles of solvent may be wanted in liters, kg
+    or pounds - add one sum field per unit, each with its own token). A
+    child nobody mentions counts x1. The last declaration for a child wins -
+    it's a current fact, not an event like a decrement - so, unlike a
+    duplicated decrement literal, repeating one is not an inconsistency.
+  - `SumCalculator` is a pure function (children's stored counts x
+    multipliers, rounded to 2 places, computed in BigDecimal).
+    `SumRecalculation` writes the result back and, like `IssuePatch`, only
+    ever saves the one `CustomValue` row - never the Issue - to stay clear of
+    optimistic-locking trouble.
+  - Recalculation is driven from the same place as the decrementable field:
+    every issue save and every comment change already runs
+    `custom_decrement_field_recalculate_all`, which now also refreshes the
+    issue's own sum fields (its comments carry the multipliers) and its
+    parent's (its count is one of the terms). Two extra hooks cover a child
+    moved to another parent (the old parent is refreshed) and a destroyed
+    child.
+- **The watchdog** (`watchdog` format, `WatchdogFormat`). A plain editable
+  Float - the critical level - plus one setting, `watched_field_id`: which
+  other numeric field of the same issue it watches (Integer, Float,
+  decrementable or sum). The association is kept on the watchdog, not on the
+  watched field, so any numeric field can be watched. Whenever the watched
+  value is at or below the watchdog's (`<=`), the issue gets a
+  `custom-decrement-field-low` CSS class (`IssueCssClassesPatch`) and is
+  highlighted in lists and on its own page. `WatchdogCheck` only compares two
+  already-stored numbers; nothing is recomputed and no flag is persisted.
+  - Stays silent for: a closed issue, an empty threshold (that disables the
+    watchdog), an empty watched value, a watched field that was deleted, or
+    one not attached to the issue's tracker.
+  - Deliberately a dedicated class and not core's `overdue`: every `overdue`
+    rule in core CSS only colors the due-date cell/value, so the class would
+    show nothing on a ticket that has no due date (and `overdue?` is only
+    consulted for CSS and Gantt - `Mailer.reminders` filters on `due_date`
+    in SQL and never calls it).
+  - Passive, like the rest: it shows up for whoever opens a list or the
+    ticket. There is no notification when the level is crossed (see TODO).
+- Both new formats render whole values without a fractional part
+  (`WholeNumberDisplay`): core formats every Float with `'%.2f'`, so 50 would
+  show as "50.00". Handing `format_object` an Integer instead takes its
+  Integer branch, which keeps the thousands-delimiter setting working.
 - No dedicated permission is introduced for decrementing. It reuses
   Redmine's own `add_issue_notes` permission, since a decrement is
   nothing more than a specially formatted comment. Undoing a mistaken
@@ -258,6 +311,17 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 - `InconsistencyRefreshHook` (in `hooks.rb`) - reloads the page after a
   comment edit/delete on a tracker with a decrementable field, so the
   marker/button/banner don't need a manual reload to catch up.
+- `lib/custom_decrement_field/sum_format.rb`, `sum_config.rb`,
+  `sum_calculator.rb`, `sum_recalculation.rb` +
+  `app/views/custom_fields/formats/_decrement_sum.html.erb` - the sum field:
+  format and its admin-form partial, settings reader, the calculation, and
+  writing the result back.
+- `lib/custom_decrement_field/watchdog_format.rb`, `watchdog_config.rb`,
+  `watchdog_check.rb` + `app/views/custom_fields/formats/_watchdog.html.erb` -
+  the watchdog: format and its admin-form partial, the watched-field lookup,
+  and the "has it reached its level" check used by `css_classes`.
+- `lib/custom_decrement_field/whole_number_display.rb` - shared display
+  tweak for both new formats.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
   below zero, and now also refuses a duplicate of an already-recorded
@@ -315,6 +379,23 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   (there is no equivalent trick available from plain CSS). On a custom
   theme with a different accent color, the button will keep working but
   may not match it exactly.
+- Sum and watchdog are drafts verified against a live Redmine 6.0-stable
+  instance through the model layer and the admin/issue pages (children added,
+  re-weighted, decremented, moved between parents, destroyed; threshold
+  crossed in both directions) - not yet by hand in a browser the way the
+  decrement button was. Closed-issue silence is implemented but was not
+  exercised.
+- `IssueCssClassesPatch` now reads `available_custom_fields` and custom
+  values for every row of a list. Whether core preloads those is unchecked -
+  a possible N+1 to look at if lists with many rows feel slow.
+- A sum field must not be marked required: it is always disabled in the
+  issue form, so the requirement could never be satisfied. Its disabled input
+  in the edit form shows the raw stored string (e.g. "0.0").
+- Not done yet, on purpose: a notification when a watchdog's level is crossed
+  (the natural place is saving the watched field's value, where both the old
+  and the new number are at hand), and a warning on a parent when some of its
+  children have an inconsistent history (their contribution can't be fully
+  trusted).
 - No automated tests yet.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
   controller). Arbitrary amounts are only possible by hand-editing a

@@ -15,3 +15,12 @@ en:
   text_decrement_token_hint: "Keyword searched for in issue comments, e.g. \"MATSTOCK : -1\" (spaces around the colon are optional - both forms are recognized). Pick something that reads naturally, since it will be visible in the comment history."
   text_zero_status_id_hint: "Optional. Leave blank to not change the issue's status automatically."
   text_decrementable_int_readonly_hint: "This value is computed from the issue's comment history and can't be edited directly here. Use the decrement button on the issue, or edit/delete the relevant comment to correct a mistake."
+
+  label_watchdog: "Watchdog (critical level)"
+  label_decrement_sum: "Weighted sum of children"
+  field_watched_field: "Watched field"
+  text_watched_field_hint: "The ticket is highlighted once the watched field is at or below this field's value. Both fields must be attached to the same tracker."
+  field_source_field: "Children's field to sum"
+  field_multiplier_token: "Multiplier token"
+  text_multiplier_token_hint: "Optional. A comment on this ticket like \"TOKEN : #57 : 0.5\" makes child #57 count 0.5 per unit; children not mentioned count 1."
+  text_sum_readonly_hint: "Computed from the child tickets and not editable."
