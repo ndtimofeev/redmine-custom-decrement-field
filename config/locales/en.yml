@@ -17,6 +17,8 @@ en:
   text_decrement_token_hint: "Keyword for writing material off, e.g. \"RASHOD : 1\" writes one off. The number is always written positive - the keyword decides the direction, and a sign typed in front of it is ignored. An optional word after the number (letters, digits, - . _ ~) is a one-off reference used to recognise a duplicate request. Both keywords are required and must differ; pick words that read naturally, since they show up in the comment history."
   error_custom_decrement_field_same_tokens: "The add keyword and the write-off keyword must be different words."
   text_zero_status_id_hint: "Optional. Leave blank to not change the issue's status automatically."
+  text_zero_status_missing: "Selected status no longer exists (id %{id}) - issues are not moved anywhere when the value reaches zero. Pick another status or clear this one."
+  text_zero_status_not_in_workflow: "Status \"%{status}\" is not in the workflow of: %{trackers}. Issues of these trackers are not moved to it when the value reaches zero. Add the status to their workflow, or clear this setting."
   text_decrementable_int_readonly_hint: "This value is computed from the issue's comment history and can't be edited directly here. Use the decrement button on the issue, or edit/delete the relevant comment to correct a mistake."
   text_decrementable_int_initial_hint: "No amount has been recorded for this field yet, so you can type the current amount here. It is saved as the field's first history entry; from then on the value changes only through comments and the decrement button."
 

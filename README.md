@@ -126,6 +126,38 @@ of a full page reload on click instead of an in-place AJAX update.
     write-offs as well, so edit those comments to start with the new add
     keyword. Nothing is recomputed when the field is saved; each issue picks
     the new meaning up on its next save or comment.
+- **The status on reaching zero is a system transition, not a user one.**
+  When the value crosses from positive to zero or below, the issue is moved
+  to the field's configured status without going through the workflow (it
+  would otherwise depend on whoever happened to write the last unit off
+  being allowed that transition). Redmine's statuses are global, though - a
+  status belongs to a tracker only by appearing in its workflow - so before
+  moving anything `ZeroStatusCheck.blocker` asks whether the move makes sense
+  for *this* ticket, and the transition is **skipped** (the value still
+  changes, and the write-off still succeeds) when:
+  - the status is not in the ticket's tracker's workflow (nor its default
+    status): the ticket would land where nobody can move it out, and a later
+    restock would not bring it back, since the transition fires only on the
+    crossing;
+  - the status is a closed one and the ticket has open subtasks or is blocked
+    by another issue (core's `closable?`);
+  - the status is an open one, the ticket is closed, and it is a subtask of a
+    closed parent (core's `reopenable?`).
+
+  A skipped transition writes one line to the Rails log naming the issue,
+  the field and the reason, and is not retried when the cause is fixed later.
+  The field's admin form warns about the misconfigurations that can be seen
+  there: a status missing from the workflow of any tracker the field is
+  attached to (listing them), and a status id that no longer exists. Neither
+  blocks saving - the workflow may legitimately be edited afterwards.
+  Because the transition bypasses core's callbacks, the two things core would
+  have done on a status change are repeated by hand: `closed_on` (set when
+  the ticket goes from open to closed) and, on instances that derive the done
+  ratio from the status, `done_ratio`. A parent's derived dates/ratio are not
+  recalculated by this move (that only happens in a real `Issue#save`).
+  One status per field is deliberate; a status per tracker was considered and
+  put off - it would live in `format_store` as a tracker-id-to-status-id map,
+  with the single status as the default for trackers without an entry.
 - **Detecting an inconsistent history.** The safe path (button/controller)
   can never produce a negative value or a repeated `literal` on its own -
   both are only reachable by hand-editing or duplicating a comment
@@ -393,6 +425,9 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   `watchdog_check.rb` + `app/views/custom_fields/formats/_watchdog.html.erb` -
   the watchdog: format and its admin-form partial, the watched-field lookup,
   and the "has it reached its level" check used by `css_classes`.
+- `lib/custom_decrement_field/zero_status_check.rb` - whether a ticket may
+  be moved to the field's zero status (workflow membership, closable /
+  reopenable), shared by the transition and the admin form's warning.
 - `lib/custom_decrement_field/whole_number_display.rb` - shared display
   tweak for both new formats.
 - `app/controllers/custom_decrement_field_controller.rb` - the

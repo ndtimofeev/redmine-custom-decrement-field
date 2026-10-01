@@ -243,6 +243,19 @@ module CustomDecrementField
       return unless old_value.positive? && new_value <= 0
       return if status_id == zero_status.id
 
+      # The value has reached zero either way; only the status change is
+      # conditional. A skipped transition is not retried when the cause is
+      # fixed later (the workflow gets the status, the subtasks get closed):
+      # it fires on the crossing, and the crossing is over.
+      reason = CustomDecrementField::ZeroStatusCheck.blocker(self, zero_status)
+      if reason
+        Rails.logger.warn(
+          "[custom_decrement_field] issue ##{id}: field '#{field.name}' reached zero but the issue was " \
+          "not moved to status '#{zero_status.name}' (#{reason})"
+        )
+        return
+      end
+
       custom_decrement_field_apply_zero_status(zero_status)
     end
 
@@ -251,15 +264,25 @@ module CustomDecrementField
     # Issue#save on `self` (see the re-entrancy note above for why that
     # matters here specifically).
     #
-    # update_column bypasses validations, callbacks and the optimistic
+    # update_columns bypasses validations, callbacks and the optimistic
     # locking check entirely - appropriate here, since this is a system-
     # triggered side effect of running out of stock, not a user-picked
     # status transition, and it should not be blocked by the Workflow
     # transition-permission check that exists to constrain *users*, nor
-    # by re-entrant-save fragility. Journal#add_attribute_detail is the
-    # same private helper Redmine's own core code uses (e.g. Issue's
-    # parent/child change tracking) to build a normal attribute-change
-    # journal detail by hand. Reusing (rather than creating a second)
+    # by re-entrant-save fragility. (Whether the status makes sense for this
+    # ticket at all is ZeroStatusCheck's job, asked before we get here.)
+    #
+    # Skipping the callbacks also skips what core's before_save callbacks do
+    # when a status changes, so the two that matter are repeated by hand:
+    # closed_on (core: set when the issue goes from open to closed, kept when
+    # it is reopened) and, when the instance uses statuses for the done
+    # ratio, done_ratio. Not repeated: the recalculation of a parent's
+    # derived dates/ratio, which only runs through a real save.
+    #
+    # Journal#add_attribute_detail is the same private helper Redmine's own
+    # core code uses (e.g. Issue's parent/child change tracking) to build a
+    # normal attribute-change journal detail by hand. Reusing (rather than
+    # creating a second)
     # current_journal, when one is already pending from whatever add-a-
     # comment action triggered this recalculation (typically the
     # decrement controller), makes the status change show up as part of
@@ -268,7 +291,12 @@ module CustomDecrementField
     def custom_decrement_field_apply_zero_status(zero_status)
       Issue.transaction do
         old_status_id = status_id
-        update_column(:status_id, zero_status.id)
+        columns = { status_id: zero_status.id }
+        columns[:closed_on] = Time.current if zero_status.is_closed? && !closed?
+        if Issue.use_status_for_done_ratio? && zero_status.default_done_ratio
+          columns[:done_ratio] = zero_status.default_done_ratio
+        end
+        update_columns(columns)
 
         journal = init_journal(User.current)
         journal.send(:add_attribute_detail, 'status_id', old_status_id, zero_status.id)

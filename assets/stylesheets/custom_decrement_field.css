@@ -121,3 +121,9 @@ tr.issue.custom-decrement-field-low:not(.context-menu-selection) > td {
 div.issue.custom-decrement-field-low {
   border-left: 4px solid #e67e22;
 }
+
+/* A misconfiguration notice under a setting on the field's admin form (see
+   _decrementable_int.html.erb) - same red as the inconsistency marker. */
+em.custom-decrement-field-config-warning {
+  color: #c22;
+}
