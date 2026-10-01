@@ -17,13 +17,25 @@ module CustomDecrementField
       end
     end
 
+    # Refresh for a parent whose sum changes because of something that
+    # happened to a child (it was changed, moved away, deleted): the parent is
+    # not being saved, so a watchdog on it that starts barking because of the
+    # new sum is noticed here (WatchdogTransition). Plain +refresh+ stays for
+    # callers that must not move any ticket - the backfill when a field is
+    # saved, and an issue's own sums, which its caller already watches.
+    def self.refresh_parent(parent)
+      return unless parent
+
+      WatchdogTransition.around(parent) { refresh(parent) }
+    end
+
     # Called whenever +issue+'s own numbers or comments may have changed:
     # its own sums (its comments carry the multipliers) and its parent's
     # (its count is one of the parent's terms). Re-fetches the parent instead
     # of using the cached association, which may hold stale custom_values.
     def self.cascade(issue)
       refresh(issue)
-      refresh(Issue.find_by(id: issue.parent_id)) if issue.parent_id
+      refresh_parent(Issue.find_by(id: issue.parent_id)) if issue.parent_id
     end
   end
 end

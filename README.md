@@ -132,7 +132,7 @@ of a full page reload on click instead of an in-place AJAX update.
   would otherwise depend on whoever happened to write the last unit off
   being allowed that transition). Redmine's statuses are global, though - a
   status belongs to a tracker only by appearing in its workflow - so before
-  moving anything `ZeroStatusCheck.blocker` asks whether the move makes sense
+  moving anything `StatusTransition.blocker` asks whether the move makes sense
   for *this* ticket, and the transition is **skipped** (the value still
   changes, and the write-off still succeeds) when:
   - the status is not in the ticket's tracker's workflow (nor its default
@@ -172,7 +172,8 @@ of a full page reload on click instead of an in-place AJAX update.
   directly. A third kind of trouble has nothing to do with the history: the
   stock is used up but the ticket could not be moved to the field's zero
   status (see the previous point), so it sits in a status that says
-  otherwise. `StockCalculator#inconsistent?` treats all of these as one
+  otherwise - and the same for a watchdog whose trigger status can't be
+  applied (see the watchdog). `StockCalculator#inconsistent?` treats all of these as one
   single concept (deliberately not separate ones to check/filter on) and is
   the one method everywhere in this plugin that answers "does this need a
   human to look at it":
@@ -295,9 +296,9 @@ of a full page reload on click instead of an in-place AJAX update.
     `CustomFieldPatch` therefore recomputes the field for every issue of its
     trackers whenever it is saved.
 - **The watchdog** (`watchdog` format, `WatchdogFormat`). A plain editable
-  Float - the critical level - plus one setting, `watched_field_id`: which
+  Float - the critical level - plus two settings: `watched_field_id`, which
   other numeric field of the same issue it watches (Integer, Float,
-  decrementable or sum). The association is kept on the watchdog, not on the
+  decrementable or sum), and an optional `trigger_status_id` (below). The association is kept on the watchdog, not on the
   watched field, so any numeric field can be watched. Whenever the watched
   value is at or below the watchdog's (`<=`), the issue gets a
   `custom-decrement-field-low` CSS class (`IssueCssClassesPatch`) and is
@@ -311,8 +312,35 @@ of a full page reload on click instead of an in-place AJAX update.
     show nothing on a ticket that has no due date (and `overdue?` is only
     consulted for CSS and Gantt - `Mailer.reminders` filters on `due_date`
     in SQL and never calls it).
-  - Passive, like the rest: it shows up for whoever opens a list or the
-    ticket. There is no notification when the level is crossed (see TODO).
+  - **Optional status when it triggers.** With a "status when triggered" set,
+    the ticket is moved to it at the moment the watchdog *starts* barking, once -
+    the same edge the zero-status transition fires on, and the same system
+    move (`StatusTransition`: outside the workflow, skipped when the status is
+    not in the tracker's workflow or the ticket can't be closed/reopened, with
+    `closed_on` set by hand; the field's admin form warns about the same
+    misconfigurations). A ticket that is already below its level, one moved
+    elsewhere by hand afterwards, a closed ticket (closed tickets don't bark)
+    and a ticket being created do not fire.
+    Because the barking itself remembers nothing, "starts" is found by
+    comparing which watchdogs bark before and after something changed the
+    numbers (`WatchdogTransition`): around a save (`IssuePatch` takes the
+    "before" in a `before_save`, as core only writes the edit's custom values
+    afterwards - this covers editing the level or a plain watched field, a
+    comment, and the recalculations), around a comment edited or deleted on its
+    own, and around a parent's sum being rewritten because a child changed
+    (`SumRecalculation.refresh_parent` - the parent isn't being saved at all).
+    The backfill that runs when a sum field is saved deliberately does not
+    fire. One move per save, for the first watchdog (by field order) whose
+    status is allowed. A parent that has no sum yet "starts barking" when its
+    first child gives it one at or below the level.
+  - A watchdog that is barking while its trigger status can't be applied
+    (missing from the workflow, open subtasks/blocker, a subtask of a closed
+    parent, status deleted) makes the ticket count as inconsistent, like the
+    zero-status case (`WatchdogCheck.status_problems`): banner with the
+    reason, row highlight, query filter - derived each time, so it clears once
+    the cause is fixed.
+  - Passive otherwise, like the rest: it shows up for whoever opens a list or
+    the ticket. There is no notification when the level is crossed (see TODO).
 - Both new formats render whole values without a fractional part
   (`WholeNumberDisplay`): core formats every Float with `'%.2f'`, so 50 would
   show as "50.00". Handing `format_object` an Integer instead takes its
@@ -439,9 +467,14 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   `watchdog_check.rb` + `app/views/custom_fields/formats/_watchdog.html.erb` -
   the watchdog: format and its admin-form partial, the watched-field lookup,
   and the "has it reached its level" check used by `css_classes`.
-- `lib/custom_decrement_field/zero_status_check.rb` - whether a ticket may
-  be moved to the field's zero status (workflow membership, closable /
-  reopenable), shared by the transition and the admin form's warning.
+- `lib/custom_decrement_field/status_transition.rb` - moving a ticket to a
+  status on the plugin's own initiative: whether it may (workflow membership,
+  closable / reopenable - also what the admin forms warn about) and the move
+  itself. Shared by the zero status and the watchdog's trigger status.
+- `lib/custom_decrement_field/watchdog_transition.rb` - fires the watchdog's
+  trigger status when a watchdog starts barking (before/after comparison).
+- `app/views/custom_decrement_field/_status_setting_warning.html.erb` - the
+  red notes under a status setting on a field's admin form.
 - `lib/custom_decrement_field/whole_number_display.rb` - shared display
   tweak for both new formats.
 - `app/controllers/custom_decrement_field_controller.rb` - the
@@ -514,8 +547,9 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   issue form, so the requirement could never be satisfied. Its disabled input
   in the edit form shows the raw stored string (e.g. "0.0").
 - Not done yet, on purpose: a notification when a watchdog's level is crossed
-  (the natural place is saving the watched field's value, where both the old
-  and the new number are at hand), and a warning on a parent when some of its
+  (`WatchdogTransition.fire` is now the one place that knows a watchdog just
+  started barking, so that is where it would hook in), and a warning on a
+  parent when some of its
   children have an inconsistent history (their contribution can't be fully
   trusted).
 - No automated tests yet.

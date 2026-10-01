@@ -16,8 +16,25 @@
                 else
                   []
                 end
+  # Barking watchdogs whose trigger status the ticket can't be moved to.
+  watchdog_problems = if issue.is_a?(Issue) && issue.persisted?
+                        CustomDecrementField::WatchdogCheck.status_problems(issue)
+                      else
+                        []
+                      end
+  # "<what happened>, but the issue was not moved to status X: <why>" for the
+  # reasons StatusTransition.blocker gives, or the shorter sentence for a
+  # status that no longer exists. `kind` is :zero_status or :watchdog.
+  describe_problem = lambda do |kind, problem, status|
+    if problem == :status_missing
+      l("text_custom_decrement_field_#{kind}_status_missing")
+    else
+      l("text_custom_decrement_field_#{kind}_problem", status: status&.name,
+        reason: l("text_custom_decrement_field_blocker_#{problem}", tracker: issue.tracker.name))
+    end
+  end
 %>
-<% if calculators.any? %>
+<% if calculators.any? || watchdog_problems.any? %>
   <%#
     The same "Note #N" numbering core itself shows next to every comment
     (see Issue#visible_journals_with_index, used the same way by
@@ -64,11 +81,16 @@
               </li>
             <% end %>
             <% if (problem = calculator.zero_status_problem) %>
-              <li>
-                <%= l("text_custom_decrement_field_zero_status_#{problem}",
-                      status: calculator.zero_status&.name, tracker: issue.tracker.name) %>
-              </li>
+              <li><%= describe_problem.call(:zero_status, problem, calculator.zero_status) %></li>
             <% end %>
+          </ul>
+        </li>
+      <% end %>
+      <% watchdog_problems.each do |watchdog, problem| %>
+        <li>
+          <strong><%= watchdog.name %></strong>
+          <ul>
+            <li><%= describe_problem.call(:watchdog, problem, CustomDecrementField::WatchdogConfig.trigger_status(watchdog)) %></li>
           </ul>
         </li>
       <% end %>

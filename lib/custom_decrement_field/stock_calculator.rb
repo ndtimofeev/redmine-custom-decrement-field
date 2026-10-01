@@ -24,18 +24,25 @@ module CustomDecrementField
       TokenConfig.fields_for_tracker(issue.tracker).map { |field| new(issue, field) }
     end
 
+    # Besides the decrementable fields' own trouble, a barking watchdog whose
+    # trigger status the ticket can't be moved to counts too
+    # (WatchdogCheck.status_problems) - not about any history, but the same
+    # "needs a human to look at it", so every place that flags or filters on
+    # inconsistency picks it up through this one method.
     def self.inconsistent?(issue)
-      calculators_for(issue).any?(&:inconsistent?)
+      calculators_for(issue).any?(&:inconsistent?) || WatchdogCheck.status_problems(issue).any?
     end
 
     # Issues that could possibly be inconsistent at all - i.e. whose
-    # tracker has at least one configured decrementable field - out of
+    # tracker has at least one configured decrementable field, or a watchdog
+    # with a trigger status - out of
     # +scope+ (defaults to every issue). #inconsistent_issue_ids uses this
     # to bound how many issues it has to actually load journals for and
     # run through #inconsistent? in Ruby, since that check has no SQL
     # equivalent (see IssueQueryPatch for why, and why that's fine here).
     def self.candidate_issues(scope = Issue.all)
-      scope.where(tracker_id: TokenConfig.tracker_ids_with_fields).includes(:journals, :tracker, :status)
+      tracker_ids = (TokenConfig.tracker_ids_with_fields + WatchdogConfig.tracker_ids_with_trigger_status).uniq
+      scope.where(tracker_id: tracker_ids).includes(:journals, :tracker, :status)
     end
 
     def self.inconsistent_issue_ids(scope = Issue.all)
@@ -163,7 +170,7 @@ module CustomDecrementField
     #
     # It holds when the history records some stock that is now used up, a
     # zero status is configured, the ticket is not in it, and either the
-    # status no longer exists (:status_missing) or ZeroStatusCheck says the
+    # status no longer exists (:status_missing) or StatusTransition says the
     # ticket can't be moved there (:not_in_workflow, :not_closable,
     # :not_reopenable). A ticket at zero whose zero status *would* be
     # accepted is not flagged - it is just waiting, or somebody moved it
@@ -180,7 +187,7 @@ module CustomDecrementField
       return :status_missing unless status
       return if issue.status_id == status.id
 
-      ZeroStatusCheck.blocker(issue, status)
+      StatusTransition.blocker(issue, status)
     end
 
     # We deliberately check <= 0 here, not == 0. The safe path (the

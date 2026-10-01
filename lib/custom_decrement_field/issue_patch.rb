@@ -37,6 +37,7 @@ module CustomDecrementField
         # custom_values. See custom_decrement_field_seed's comment for
         # why after_create is too early for that.
         before_save :custom_decrement_field_seed_on_update
+        before_save :custom_decrement_field_watchdog_snapshot
         after_save :custom_decrement_field_seed
         after_save :custom_decrement_field_recalculate_all
         # Both run after the recalculation above, so the parent's sum reads
@@ -147,6 +148,18 @@ module CustomDecrementField
       journal.notes = [journal.notes.presence, *lines].compact.join("\n")
     end
 
+    # Which watchdogs are barking before this save changes anything. Core
+    # writes the edit's custom values in an after_save, so at this point the
+    # stored numbers are still the old ones (the status, though, is already
+    # the edited one, which is what keeps reopening a ticket that is below its
+    # level from counting as a new bark). Consumed - and cleared - by
+    # custom_decrement_field_recalculate_all, whichever of its runs comes
+    # first; see WatchdogTransition for the whole idea. A new record has no
+    # "before".
+    def custom_decrement_field_watchdog_snapshot
+      @custom_decrement_field_watchdog_before = new_record? ? nil : CustomDecrementField::WatchdogCheck.barking_fields(self)
+    end
+
     def custom_decrement_field_seed_note(field, amount)
       config = CustomDecrementField::TokenConfig.for_field(field)
       amount.positive? ? config.increment_note(amount) : config.decrement_note(amount.abs)
@@ -177,6 +190,12 @@ module CustomDecrementField
       return if @custom_decrement_field_processing
 
       @custom_decrement_field_processing = true
+      # Whoever changed the numbers first (a save, see the snapshot callback)
+      # has already recorded what was barking; otherwise - a comment edited or
+      # deleted on its own - this run is the first to look, and the stored
+      # numbers are still the old ones.
+      watchdogs_before = @custom_decrement_field_watchdog_before || CustomDecrementField::WatchdogCheck.barking_fields(self)
+      @custom_decrement_field_watchdog_before = nil
       begin
         # Core's create_journal runs before our after_save callbacks, but it
         # builds the Journal with `journalized: self` rather than through
@@ -195,6 +214,7 @@ module CustomDecrementField
         # Sum fields: this issue's own (its comments hold the multipliers)
         # and its parent's (this issue's count is one of the terms).
         CustomDecrementField::SumRecalculation.cascade(self)
+        CustomDecrementField::WatchdogTransition.fire(self, watchdogs_before)
       ensure
         @custom_decrement_field_processing = false
       end
@@ -206,11 +226,11 @@ module CustomDecrementField
       return unless saved_change_to_parent_id?
 
       previous_id = saved_change_to_parent_id.first
-      CustomDecrementField::SumRecalculation.refresh(Issue.find_by(id: previous_id)) if previous_id
+      CustomDecrementField::SumRecalculation.refresh_parent(Issue.find_by(id: previous_id)) if previous_id
     end
 
     def custom_decrement_field_refresh_parent
-      CustomDecrementField::SumRecalculation.refresh(Issue.find_by(id: parent_id)) if parent_id
+      CustomDecrementField::SumRecalculation.refresh_parent(Issue.find_by(id: parent_id)) if parent_id
     end
 
     def custom_decrement_field_recalculate(field)
@@ -247,7 +267,7 @@ module CustomDecrementField
       # conditional. A skipped transition is not retried when the cause is
       # fixed later (the workflow gets the status, the subtasks get closed):
       # it fires on the crossing, and the crossing is over.
-      reason = CustomDecrementField::ZeroStatusCheck.blocker(self, zero_status)
+      reason = CustomDecrementField::StatusTransition.blocker(self, zero_status)
       if reason
         Rails.logger.warn(
           "[custom_decrement_field] issue ##{id}: field '#{field.name}' reached zero but the issue was " \
@@ -259,49 +279,10 @@ module CustomDecrementField
       custom_decrement_field_apply_zero_status(zero_status)
     end
 
-    # Moves the issue to zero_status and records that as a normal
-    # "Status changed from X to Y" journal entry, without ever calling
-    # Issue#save on `self` (see the re-entrancy note above for why that
-    # matters here specifically).
-    #
-    # update_columns bypasses validations, callbacks and the optimistic
-    # locking check entirely - appropriate here, since this is a system-
-    # triggered side effect of running out of stock, not a user-picked
-    # status transition, and it should not be blocked by the Workflow
-    # transition-permission check that exists to constrain *users*, nor
-    # by re-entrant-save fragility. (Whether the status makes sense for this
-    # ticket at all is ZeroStatusCheck's job, asked before we get here.)
-    #
-    # Skipping the callbacks also skips what core's before_save callbacks do
-    # when a status changes, so the two that matter are repeated by hand:
-    # closed_on (core: set when the issue goes from open to closed, kept when
-    # it is reopened) and, when the instance uses statuses for the done
-    # ratio, done_ratio. Not repeated: the recalculation of a parent's
-    # derived dates/ratio, which only runs through a real save.
-    #
-    # Journal#add_attribute_detail is the same private helper Redmine's own
-    # core code uses (e.g. Issue's parent/child change tracking) to build a
-    # normal attribute-change journal detail by hand. Reusing (rather than
-    # creating a second)
-    # current_journal, when one is already pending from whatever add-a-
-    # comment action triggered this recalculation (typically the
-    # decrement controller), makes the status change show up as part of
-    # that same journal entry - "removed 1, status: New -> Depleted" as
-    # one history entry, not two.
+    # See StatusTransition.apply for why this is not an Issue#save and what it
+    # repeats by hand.
     def custom_decrement_field_apply_zero_status(zero_status)
-      Issue.transaction do
-        old_status_id = status_id
-        columns = { status_id: zero_status.id }
-        columns[:closed_on] = Time.current if zero_status.is_closed? && !closed?
-        if Issue.use_status_for_done_ratio? && zero_status.default_done_ratio
-          columns[:done_ratio] = zero_status.default_done_ratio
-        end
-        update_columns(columns)
-
-        journal = init_journal(User.current)
-        journal.send(:add_attribute_detail, 'status_id', old_status_id, zero_status.id)
-        journal.save!
-      end
+      CustomDecrementField::StatusTransition.apply(self, zero_status)
     end
   end
 end

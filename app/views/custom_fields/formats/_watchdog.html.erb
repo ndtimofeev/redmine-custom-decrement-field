@@ -4,3 +4,13 @@
         { include_blank: true, label: :field_watched_field } %>
   <em class="info"><%= l(:text_watched_field_hint) %></em>
 </p>
+<p>
+  <%# Same select as the decrementable field's "status on reaching zero" - see
+      that partial for the :label-in-options detail. %>
+  <%= f.select :trigger_status_id,
+        IssueStatus.all.collect { |st| [st.name, st.id.to_s] },
+        { include_blank: true, label: :field_trigger_status_id } %>
+  <em class="info"><%= l(:text_trigger_status_id_hint) %></em>
+  <%= render partial: 'custom_decrement_field/status_setting_warning',
+             locals: { field: f.object, status_id: f.object.trigger_status_id } %>
+</p>

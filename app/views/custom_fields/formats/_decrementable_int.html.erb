@@ -27,23 +27,6 @@
         IssueStatus.all.collect { |s| [s.name, s.id.to_s] },
         { include_blank: true, label: :field_zero_status_id } %>
   <em class="info"><%= l(:text_zero_status_id_hint) %></em>
-  <%#
-    Misconfiguration the select itself can't show: statuses are global in
-    Redmine, so every status is offered here, whatever trackers the field is
-    attached to. See ZeroStatusCheck for why a status outside a tracker's
-    workflow is skipped at runtime rather than applied.
-  %>
-  <% configured_id = f.object.zero_status_id.presence %>
-  <% if configured_id %>
-    <% zero_status = IssueStatus.find_by(id: configured_id) %>
-    <% if zero_status.nil? %>
-      <br /><em class="info custom-decrement-field-config-warning"><%= l(:text_zero_status_missing, id: configured_id) %></em>
-    <% else %>
-      <% without = CustomDecrementField::ZeroStatusCheck.trackers_without(f.object, zero_status) %>
-      <% if without.any? %>
-        <br /><em class="info custom-decrement-field-config-warning"><%= l(:text_zero_status_not_in_workflow,
-              status: zero_status.name, trackers: without.map(&:name).join(', ')) %></em>
-      <% end %>
-    <% end %>
-  <% end %>
+  <%= render partial: 'custom_decrement_field/status_setting_warning',
+             locals: { field: f.object, status_id: f.object.zero_status_id } %>
 </p>

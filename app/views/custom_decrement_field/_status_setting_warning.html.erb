@@ -1,0 +1,23 @@
+<%#
+  Misconfiguration notices for a "move the ticket to this status" setting on a
+  field's admin form (the decrementable field's zero status, the watchdog's
+  trigger status) that the select itself can't show: statuses are global in
+  Redmine, so every status is offered there, whatever trackers the field is
+  attached to. See StatusTransition for why a status outside a tracker's
+  workflow is skipped at runtime rather than applied.
+
+  Locals: field - the CustomField being edited; status_id - its configured
+  status id (a string, possibly blank).
+%>
+<% if status_id.present? %>
+  <% status = IssueStatus.find_by(id: status_id) %>
+  <% if status.nil? %>
+    <br /><em class="info custom-decrement-field-config-warning"><%= l(:text_status_setting_missing, id: status_id) %></em>
+  <% else %>
+    <% without = CustomDecrementField::StatusTransition.trackers_without(field, status) %>
+    <% if without.any? %>
+      <br /><em class="info custom-decrement-field-config-warning"><%= l(:text_status_setting_not_in_workflow,
+            status: status.name, trackers: without.map(&:name).join(', ')) %></em>
+    <% end %>
+  <% end %>
+<% end %>
