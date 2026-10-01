@@ -121,3 +121,24 @@ tr.issue.custom-decrement-field-low:not(.context-menu-selection) > td {
 div.issue.custom-decrement-field-low {
   border-left: 4px solid #e67e22;
 }
+
+/* The "+" form that takes the place of the "-" button while a field has no
+   history (see DecrementableIntFormat#initial_amount_form). The button itself
+   is styled by the rules above - it carries the same class. */
+form.custom-decrement-field-add-form {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 0 0.4em;
+}
+
+form.custom-decrement-field-add-form input.custom-decrement-field-amount {
+  box-sizing: border-box;
+  width: 5em;
+  height: 1.8em;
+  margin: 0;
+  vertical-align: middle;
+}
+
+form.custom-decrement-field-add-form input.custom-decrement-field-button[type="submit"] {
+  margin-left: 0.3em;
+}

@@ -1,6 +1,10 @@
 en:
   error_custom_decrement_field_exhausted: "Value is already zero (or less), decrement is unavailable"
   error_custom_decrement_field_duplicate_literal: "This exact decrement was already recorded - ignoring the duplicate request"
+  button_custom_decrement_field_initial: "Enter the current amount"
+  error_custom_decrement_field_has_history: "This field already has history - amounts can no longer be set this way"
+  error_custom_decrement_field_invalid_amount: "Enter a whole number greater than zero"
+  notice_custom_decrement_field_initial_set: "Amount recorded"
   notice_custom_decrement_field_decremented: "Decremented"
   button_custom_decrement_field_decrement: "Decrement"
 
