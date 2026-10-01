@@ -74,18 +74,32 @@ module CustomDecrementField
     # controller - makes the status change show up as part of that same
     # journal entry: "removed 1, status: New -> Depleted" as one history
     # entry, not two.
+    #
+    # Returns true if the ticket was moved, false if somebody else got there
+    # first: the UPDATE is conditioned on the status the caller saw
+    # (compare-and-set), so of two requests that both noticed the same
+    # crossing at the same moment only one moves the ticket and writes the
+    # journal entry; the other changes nothing. (Two requests that read the
+    # ticket before either committed is exactly what the "was it already
+    # there" checks of the callers cannot see.)
     def apply(issue, status)
+      moved = false
       Issue.transaction do
         old_status_id = issue.status_id
         columns = { status_id: status.id }
         columns[:closed_on] = Time.current if status.is_closed? && !issue.closed?
         columns[:done_ratio] = status.default_done_ratio if Issue.use_status_for_done_ratio? && status.default_done_ratio
-        issue.update_columns(columns)
 
-        journal = issue.init_journal(User.current)
-        journal.send(:add_attribute_detail, 'status_id', old_status_id, status.id)
-        journal.save!
+        if Issue.where(id: issue.id, status_id: old_status_id).update_all(columns).positive?
+          issue.update_columns(columns) # the in-memory copy; the row already has these values
+
+          journal = issue.init_journal(User.current)
+          journal.send(:add_attribute_detail, 'status_id', old_status_id, status.id)
+          journal.save!
+          moved = true
+        end
       end
+      moved
     end
   end
 end

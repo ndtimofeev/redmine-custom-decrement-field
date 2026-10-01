@@ -14,3 +14,11 @@
   <%= render partial: 'custom_decrement_field/status_setting_warning',
              locals: { field: f.object, status_id: f.object.trigger_status_id } %>
 </p>
+<p>
+  <%= f.select :release_status_id,
+        IssueStatus.all.collect { |st| [st.name, st.id.to_s] },
+        { include_blank: true, label: :field_release_status_id } %>
+  <em class="info"><%= l(:text_release_status_id_hint) %></em>
+  <%= render partial: 'custom_decrement_field/status_setting_warning',
+             locals: { field: f.object, status_id: f.object.release_status_id } %>
+</p>

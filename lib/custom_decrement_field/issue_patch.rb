@@ -148,7 +148,8 @@ module CustomDecrementField
       journal.notes = [journal.notes.presence, *lines].compact.join("\n")
     end
 
-    # Which watchdogs are barking before this save changes anything. Core
+    # Which watchdogs are at or below their level before this save changes
+    # anything. Core
     # writes the edit's custom values in an after_save, so at this point the
     # stored numbers are still the old ones (the status, though, is already
     # the edited one, which is what keeps reopening a ticket that is below its
@@ -157,7 +158,7 @@ module CustomDecrementField
     # first; see WatchdogTransition for the whole idea. A new record has no
     # "before".
     def custom_decrement_field_watchdog_snapshot
-      @custom_decrement_field_watchdog_before = new_record? ? nil : CustomDecrementField::WatchdogCheck.barking_fields(self)
+      @custom_decrement_field_watchdog_before = new_record? ? nil : CustomDecrementField::WatchdogCheck.reached_fields(self)
     end
 
     def custom_decrement_field_seed_note(field, amount)
@@ -194,7 +195,7 @@ module CustomDecrementField
       # has already recorded what was barking; otherwise - a comment edited or
       # deleted on its own - this run is the first to look, and the stored
       # numbers are still the old ones.
-      watchdogs_before = @custom_decrement_field_watchdog_before || CustomDecrementField::WatchdogCheck.barking_fields(self)
+      watchdogs_before = @custom_decrement_field_watchdog_before || CustomDecrementField::WatchdogCheck.reached_fields(self)
       @custom_decrement_field_watchdog_before = nil
       begin
         # Core's create_journal runs before our after_save callbacks, but it
@@ -226,11 +227,11 @@ module CustomDecrementField
       return unless saved_change_to_parent_id?
 
       previous_id = saved_change_to_parent_id.first
-      CustomDecrementField::SumRecalculation.refresh_parent(Issue.find_by(id: previous_id)) if previous_id
+      CustomDecrementField::SumRecalculation.refresh_parent(previous_id)
     end
 
     def custom_decrement_field_refresh_parent
-      CustomDecrementField::SumRecalculation.refresh_parent(Issue.find_by(id: parent_id)) if parent_id
+      CustomDecrementField::SumRecalculation.refresh_parent(parent_id)
     end
 
     def custom_decrement_field_recalculate(field)

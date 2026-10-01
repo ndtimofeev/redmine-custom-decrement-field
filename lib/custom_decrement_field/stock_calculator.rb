@@ -35,13 +35,13 @@ module CustomDecrementField
 
     # Issues that could possibly be inconsistent at all - i.e. whose
     # tracker has at least one configured decrementable field, or a watchdog
-    # with a trigger status - out of
+    # with a status to move to - out of
     # +scope+ (defaults to every issue). #inconsistent_issue_ids uses this
     # to bound how many issues it has to actually load journals for and
     # run through #inconsistent? in Ruby, since that check has no SQL
     # equivalent (see IssueQueryPatch for why, and why that's fine here).
     def self.candidate_issues(scope = Issue.all)
-      tracker_ids = (TokenConfig.tracker_ids_with_fields + WatchdogConfig.tracker_ids_with_trigger_status).uniq
+      tracker_ids = (TokenConfig.tracker_ids_with_fields + WatchdogConfig.tracker_ids_with_status).uniq
       scope.where(tracker_id: tracker_ids).includes(:journals, :tracker, :status)
     end
 

@@ -16,7 +16,7 @@
                 else
                   []
                 end
-  # Barking watchdogs whose trigger status the ticket can't be moved to.
+  # Watchdogs whose trigger or release status the ticket can't be moved to.
   watchdog_problems = if issue.is_a?(Issue) && issue.persisted?
                         CustomDecrementField::WatchdogCheck.status_problems(issue)
                       else
@@ -24,7 +24,8 @@
                       end
   # "<what happened>, but the issue was not moved to status X: <why>" for the
   # reasons StatusTransition.blocker gives, or the shorter sentence for a
-  # status that no longer exists. `kind` is :zero_status or :watchdog.
+  # status that no longer exists. `kind` is :zero_status, :watchdog (the trigger
+  # status) or :watchdog_release.
   describe_problem = lambda do |kind, problem, status|
     if problem == :status_missing
       l("text_custom_decrement_field_#{kind}_status_missing")
@@ -86,11 +87,15 @@
           </ul>
         </li>
       <% end %>
-      <% watchdog_problems.each do |watchdog, problem| %>
+      <% watchdog_problems.each do |watchdog, kind, problem| %>
         <li>
           <strong><%= watchdog.name %></strong>
           <ul>
-            <li><%= describe_problem.call(:watchdog, problem, CustomDecrementField::WatchdogConfig.trigger_status(watchdog)) %></li>
+            <% if kind == :trigger %>
+              <li><%= describe_problem.call(:watchdog, problem, CustomDecrementField::WatchdogConfig.trigger_status(watchdog)) %></li>
+            <% else %>
+              <li><%= describe_problem.call(:watchdog_release, problem, CustomDecrementField::WatchdogConfig.release_status(watchdog)) %></li>
+            <% end %>
           </ul>
         </li>
       <% end %>

@@ -1,13 +1,18 @@
 module CustomDecrementField
-  # Moves a ticket to a watchdog's trigger status at the moment the watchdog
-  # starts barking.
+  # Moves a ticket to a watchdog's statuses at the moment it starts barking
+  # (trigger status) and at the moment it stops (release status).
   #
   # The barking itself is derived from two stored numbers and remembers
-  # nothing (WatchdogCheck), so "starts" has to be found by comparing the set
-  # of barking watchdogs before and after something changed the numbers - the
-  # same edge the zero-status transition fires on, for the same reason: a
-  # ticket that is already below its level, or whose status somebody changed
-  # on purpose afterwards, is left alone.
+  # nothing (WatchdogCheck), so "starts" and "stops" have to be found by
+  # comparing the set of watchdogs that are at or below their level before and
+  # after something changed the numbers - the same edge the zero-status
+  # transition fires on, for the same reason: a ticket that is already below
+  # its level, or whose status somebody changed on purpose afterwards, is left
+  # alone.
+  #
+  # The comparison is on the numbers (WatchdogCheck.reached_fields), not on
+  # "barking": closing a ticket makes it stop barking without anything having
+  # recovered, and must not release it; a closed ticket is not moved at all.
   #
   # Two kinds of caller supply the "before":
   # * IssuePatch, around everything that can change an issue's own numbers (a
@@ -23,35 +28,50 @@ module CustomDecrementField
     module_function
 
     # Runs the block (which changes `issue`'s stored numbers), then fires for
-    # whatever started barking inside it.
+    # whatever started or stopped inside it.
     def around(issue)
-      before = WatchdogCheck.barking_fields(issue)
+      before = WatchdogCheck.reached_fields(issue)
       result = yield
       fire(issue, before)
       result
     end
 
-    # Moves `issue` for the first watchdog that started barking since `before`
-    # and has a trigger status the issue may be moved to. At most one move per
-    # call; a watchdog whose move is blocked is logged and skipped (and shows
-    # up as an inconsistency - see WatchdogCheck.status_problems).
+    # At most one move per call, and a trigger comes before a release: the
+    # first watchdog (by field order) that started and has a trigger status
+    # the issue may be moved to; failing that, the first that stopped and has a
+    # release status it may be moved to. A move that is blocked is logged and
+    # skipped (and shows up as an inconsistency - see
+    # WatchdogCheck.status_problems).
     def fire(issue, before)
-      (WatchdogCheck.barking_fields(issue) - before).each do |watchdog|
-        status = WatchdogConfig.trigger_status(watchdog)
+      return if issue.closed?
+
+      after = WatchdogCheck.reached_fields(issue)
+      started = after - before
+      stopped = before - after
+      return if started.empty? && stopped.empty?
+
+      move_for(issue, started, :trigger) { |watchdog| WatchdogConfig.trigger_status(watchdog) } ||
+        move_for(issue, stopped, :release) { |watchdog| WatchdogConfig.release_status(watchdog) }
+    end
+
+    # Returns true once a watchdog of `watchdogs` has moved the issue.
+    def move_for(issue, watchdogs, kind)
+      watchdogs.each do |watchdog|
+        status = yield(watchdog)
         next if status.nil? || issue.status_id == status.id
 
         reason = StatusTransition.blocker(issue, status)
         if reason
           Rails.logger.warn(
-            "[custom_decrement_field] issue ##{issue.id}: watchdog '#{watchdog.name}' triggered but the issue " \
-            "was not moved to status '#{status.name}' (#{reason})"
+            "[custom_decrement_field] issue ##{issue.id}: watchdog '#{watchdog.name}' #{kind == :trigger ? 'triggered' : 'released'} " \
+            "but the issue was not moved to status '#{status.name}' (#{reason})"
           )
           next
         end
 
-        StatusTransition.apply(issue, status)
-        break
+        return true if StatusTransition.apply(issue, status)
       end
+      false
     end
   end
 end

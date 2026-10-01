@@ -312,33 +312,63 @@ of a full page reload on click instead of an in-place AJAX update.
     show nothing on a ticket that has no due date (and `overdue?` is only
     consulted for CSS and Gantt - `Mailer.reminders` filters on `due_date`
     in SQL and never calls it).
-  - **Optional status when it triggers.** With a "status when triggered" set,
-    the ticket is moved to it at the moment the watchdog *starts* barking, once -
-    the same edge the zero-status transition fires on, and the same system
-    move (`StatusTransition`: outside the workflow, skipped when the status is
-    not in the tracker's workflow or the ticket can't be closed/reopened, with
+  - **Optional statuses: when it triggers, and when it stops.** With a "status
+    when triggered" set, the ticket is moved to it at the moment the watchdog
+    *starts* barking, once; with a "status when back to normal" set, at the
+    moment the watched value rises above the level again. It is the same edge
+    the zero-status transition fires on, and the same system move
+    (`StatusTransition`: outside the workflow, skipped when the status is not
+    in the tracker's workflow or the ticket can't be closed/reopened, with
     `closed_on` set by hand; the field's admin form warns about the same
-    misconfigurations). A ticket that is already below its level, one moved
-    elsewhere by hand afterwards, a closed ticket (closed tickets don't bark)
-    and a ticket being created do not fire.
-    Because the barking itself remembers nothing, "starts" is found by
-    comparing which watchdogs bark before and after something changed the
-    numbers (`WatchdogTransition`): around a save (`IssuePatch` takes the
-    "before" in a `before_save`, as core only writes the edit's custom values
-    afterwards - this covers editing the level or a plain watched field, a
-    comment, and the recalculations), around a comment edited or deleted on its
-    own, and around a parent's sum being rewritten because a child changed
-    (`SumRecalculation.refresh_parent` - the parent isn't being saved at all).
-    The backfill that runs when a sum field is saved deliberately does not
-    fire. One move per save, for the first watchdog (by field order) whose
-    status is allowed. A parent that has no sum yet "starts barking" when its
-    first child gives it one at or below the level.
+    misconfigurations for both settings). Every new crossing fires - not "once
+    per ticket": below the level, up again, below again moves the ticket
+    three times. Not fired: for a ticket that is already below its level, one
+    moved elsewhere by hand afterwards (a later manual choice stands), a ticket
+    being created, and any **closed** ticket - closing makes a watchdog stop
+    barking without anything having recovered, so the comparison is on the
+    numbers (`WatchdogCheck.reached_fields`), not on "barking", and a closed
+    ticket is simply not moved. The release is unconditional otherwise: it
+    moves the ticket whatever status it is in now (somebody having put it in
+    "ordered" in the meantime does not stop it), and also when the ticket was
+    never moved by the trigger (it was created below its level, or the level
+    was lowered).
+    Because the barking itself remembers nothing, "starts" and "stops" are found
+    by comparing which watchdogs are at or below their level before and after
+    something changed the numbers (`WatchdogTransition`): around a save
+    (`IssuePatch` takes the "before" in a `before_save`, as core only writes
+    the edit's custom values afterwards - this covers editing the level or a
+    plain watched field, a comment, and the recalculations), around a comment
+    edited or deleted on its own, and around a parent's sum being rewritten
+    because a child changed (`SumRecalculation.refresh_parent` - the parent
+    isn't being saved at all). The backfill that runs when a sum field is
+    saved deliberately does not fire. One move per call: a trigger comes
+    before a release, and within each the first watchdog (by field order)
+    whose status is allowed. A new parent starts out with a stored sum of 0, so
+    it is "below" any level from the start (and highlighted) without firing;
+    the first child that lifts the sum above the level makes it stop barking,
+    which moves it to the release status if there is one.
+  - **Concurrency.** Two children of one parent changing at the same moment
+    would each recompute the parent's sum without the other's change, and the
+    later write would win (a lost update, independent of any status). So
+    `refresh_parent` locks the parent's row (`SELECT ... FOR UPDATE`) before
+    reading and recomputing it; the second change waits for the first to commit
+    and then sees its result. The move itself is a compare-and-set
+    (`UPDATE ... WHERE status_id = <the status the caller saw>`): if two
+    requests notice the same crossing, only one moves the ticket and writes the
+    journal entry. The compare-and-set is covered by a deterministic check; the
+    lock has **not** been exercised under real concurrency (the development
+    instance runs SQLite, which serializes writers and ignores the lock), and
+    on MySQL's default REPEATABLE READ the children's later plain SELECTs can
+    still come from an older snapshot.
   - A watchdog that is barking while its trigger status can't be applied
     (missing from the workflow, open subtasks/blocker, a subtask of a closed
     parent, status deleted) makes the ticket count as inconsistent, like the
     zero-status case (`WatchdogCheck.status_problems`): banner with the
     reason, row highlight, query filter - derived each time, so it clears once
-    the cause is fixed.
+    the cause is fixed. The release side is reported only for a ticket still
+    sitting in the watchdog's trigger status although the watchdog no longer
+    barks and the release status can't be applied: without a memory of
+    attempts, that is the one place "stuck" can be told from "never moved".
   - Passive otherwise, like the rest: it shows up for whoever opens a list or
     the ticket. There is no notification when the level is crossed (see TODO).
 - Both new formats render whole values without a fractional part
@@ -470,9 +500,9 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 - `lib/custom_decrement_field/status_transition.rb` - moving a ticket to a
   status on the plugin's own initiative: whether it may (workflow membership,
   closable / reopenable - also what the admin forms warn about) and the move
-  itself. Shared by the zero status and the watchdog's trigger status.
+  itself. Shared by the zero status and the watchdog's two statuses.
 - `lib/custom_decrement_field/watchdog_transition.rb` - fires the watchdog's
-  trigger status when a watchdog starts barking (before/after comparison).
+  trigger status when a watchdog starts barking and its release status when it stops (before/after comparison).
 - `app/views/custom_decrement_field/_status_setting_warning.html.erb` - the
   red notes under a status setting on a field's admin form.
 - `lib/custom_decrement_field/whole_number_display.rb` - shared display
