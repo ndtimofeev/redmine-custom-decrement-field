@@ -141,17 +141,7 @@ module CustomDecrementField
       # currently untrustworthy.
       parts = [text.to_s]
       parts << inconsistency_marker(view) if calculator.inconsistent?
-      if User.current.allowed_to?(:add_issue_notes, issue.project)
-        # No entry at all yet: there is nothing to write off, and the one
-        # useful thing to do is say how much there is. The "-" button gives
-        # way to a "+" next to a small number input; once an entry exists
-        # (this one, or a comment typed by hand) it becomes "-" again.
-        parts << if calculator.entries.empty?
-                   initial_amount_form(view, issue, custom_value.custom_field)
-                 else
-                   decrement_button(view, issue, custom_value.custom_field, calculator)
-                 end
-      end
+      parts << decrement_button(view, issue, custom_value.custom_field, calculator) if User.current.allowed_to?(:add_issue_notes, issue.project)
       view.safe_join(parts)
     end
 
@@ -203,30 +193,6 @@ module CustomDecrementField
         class: 'custom-decrement-field-inconsistency-marker',
         title: l(:text_custom_decrement_field_inconsistent_marker)
       )
-    end
-
-    # The "+" button with a number box beside it, shown while the field has no
-    # history. Like the "-" button this is a plain <form> (no JavaScript), and
-    # `required`/`min` just keep an empty or zero submission from leaving the
-    # page - the controller validates again regardless.
-    def initial_amount_form(view, issue, field)
-      view.form_tag(
-        view.increment_issue_custom_field_path(issue_id: issue.id, custom_field_id: field.id),
-        method: :post, class: 'custom-decrement-field-add-form'
-      ) do
-        view.safe_join([
-          view.number_field_tag(
-            :amount, nil, min: 1, step: 1, required: true, id: nil,
-            class: 'custom-decrement-field-amount',
-            title: l(:button_custom_decrement_field_initial),
-            'aria-label': l(:button_custom_decrement_field_initial)
-          ),
-          view.submit_tag(
-            '+', name: nil, class: 'custom-decrement-field-button',
-            title: l(:button_custom_decrement_field_initial), data: { disable_with: false }
-          )
-        ])
-      end
     end
 
     # A plain button_to - an ordinary HTML <form>, not a link with a

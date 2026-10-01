@@ -113,25 +113,6 @@ of a full page reload on click instead of an in-place AJAX update.
     write-offs as well, so edit those comments to start with the new add
     keyword. Nothing is recomputed when the field is saved; each issue picks
     the new meaning up on its next save or comment.
-- **A field with no history shows "+", not "−".** While a decrementable
-  field has no entry at all (`StockCalculator#entries.empty?` - typically a
-  ticket created without an initial amount, or with 0), there is nothing to
-  write off, so `DecrementableIntFormat#formatted_custom_value` draws a small
-  number input with a "+" button instead of the "−" button. Submitting it
-  `POST`s to `.../increment` (`CustomDecrementFieldController#increment`),
-  which records the number under the add keyword (`PRIHOD : 12`) - the very
-  same first entry that `custom_decrement_field_seed` would have written had
-  the number been typed on creation. As soon as one entry exists, by this form
-  or by a comment typed by hand, the "−" button takes over again. Like "−" it
-  is a plain `<form>` (works without JavaScript), gated on `add_issue_notes`,
-  and only drawn on the issue's own page. The endpoint re-checks everything
-  the form only hints at: the amount must be a whole number above zero
-  (surrounding spaces are fine; `0`, a sign, a decimal point or comma and
-  non-numbers are refused), and once the field has any history it refuses
-  (`error_custom_decrement_field_has_history`) - so a stale page, or a second
-  click, can never turn "set the initial amount" into a way to add arbitrary
-  amounts later. Arbitrary restocking still goes through a hand-typed
-  `PRIHOD : N` comment; an always-available "+" is not offered.
 - **Detecting an inconsistent history.** The safe path (button/controller)
   can never produce a negative value or a repeated `literal` on its own -
   both are only reachable by hand-editing or duplicating a comment
@@ -403,13 +384,12 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 - `app/controllers/custom_decrement_field_controller.rb` - the
   decrement endpoint (always -1, refuses to act once already at or
   below zero, and now also refuses a duplicate of an already-recorded
-  `literal` param - see "Design"), and the `increment` endpoint behind the
-  "+" form (an arbitrary positive amount, but only while the field has no
-  history at all). Both respond to `html` (redirect back to the issue, used
-  by this branch's plain `<form>`s) and `json`.
+  `literal` param - see "Design"). Unchanged from `main` otherwise: it
+  still responds to both `html` (redirect back to the issue, used by
+  this branch's plain `<form>` button) and `json` (used by `main`'s JS
+  button).
 - `DecrementableIntFormat#formatted_custom_value` (in
-  `decrementable_int_format.rb`) - draws the "-1" button (or, while the field has no
-  history, the "+" form) as part of the
+  `decrementable_int_format.rb`) - draws the "-1" button as part of the
   field's own HTML. `html` alone is not enough to tell this call apart
   from an issue *list* rendering this field as a column - an earlier
   version of this file claimed it was, based on misreading a core
@@ -477,10 +457,9 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   trusted).
 - No automated tests yet.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
-  controller). Arbitrary write-offs are only possible by typing a comment,
-  deliberately not exposed anywhere in the UI - see the concurrency note in
-  the controller's comments for why. The one place a user-chosen number is
-  accepted is the "+" form of a field with no history (see "Design").
+  controller). Arbitrary amounts are only possible by hand-editing a
+  comment's text, deliberately not exposed anywhere in the UI - see the
+  concurrency note in the controller's comments for why.
 - A QR-code scanner was deliberately kept out of this plugin. It was
   discussed as a separate, independent plugin with its own contract (a
   scanned code is just a plain issue URL) and was never added here.
@@ -498,7 +477,6 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   query yet.
 - Unlike `main`'s JS button, this branch's button text/tooltip go
   through Redmine's own i18n system (`button_custom_decrement_field_decrement`,
-  `button_custom_decrement_field_initial`, `error_custom_decrement_field_exhausted`
-  and friends in `config/locales/`), since
+  `error_custom_decrement_field_exhausted` in `config/locales/`), since
   it's now rendered by Ruby view code rather than a script with no
   access to `l()`.

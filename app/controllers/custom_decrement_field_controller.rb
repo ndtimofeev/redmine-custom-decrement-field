@@ -5,10 +5,10 @@ class CustomDecrementFieldController < ApplicationController
 
   # The button (and any future QR-code flow) always writes off exactly
   # 1 unit. Arbitrary amounts are only ever possible by hand-editing a
-  # comment's text directly, with one exception: `increment` below takes
-  # an amount, but only while the field has no history at all - and checks
-  # that under the same row lock as everything else here, so it can't be
-  # used to add stock a second time.
+  # comment's text directly, and that is deliberately never exposed
+  # anywhere in the UI: that path bypasses the concurrency-safe
+  # check-then-write sequence below entirely, since it goes straight
+  # through Redmine's ordinary comment editing, not this controller.
   DECREMENT_AMOUNT = 1
 
   def decrement
@@ -70,50 +70,6 @@ class CustomDecrementFieldController < ApplicationController
     respond_to do |format|
       format.json { render json: { remaining: @remaining, error: @error } }
       format.html { redirect_to issue_path(@issue), notice: @error || l(:notice_custom_decrement_field_decremented) }
-    end
-  end
-
-  # Records the first amount of a field that has no history yet - the "+"
-  # form that takes the place of the "-" button in that state (see
-  # DecrementableIntFormat#formatted_custom_value). It is refused as soon as
-  # any entry exists, whatever the page the request came from showed: a
-  # form rendered before somebody else recorded the amount must not add it
-  # a second time. From then on stock changes through the "-" button and
-  # through comments, like any field with a history.
-  def increment
-    amount = params[:amount].to_s.strip
-    amount = amount.match?(/\A\d+\z/) ? amount.to_i : nil
-
-    Issue.transaction do
-      @issue.lock!
-
-      calculator = CustomDecrementField::StockCalculator.new(@issue, @field)
-      @remaining = calculator.value
-
-      if calculator.entries.any?
-        @error = l(:error_custom_decrement_field_has_history)
-        raise ActiveRecord::Rollback
-      end
-
-      unless amount&.positive?
-        @error = l(:error_custom_decrement_field_invalid_amount)
-        raise ActiveRecord::Rollback
-      end
-
-      @issue.init_journal(User.current, calculator.config.increment_note(amount))
-      @issue.save!
-      @remaining = CustomDecrementField::StockCalculator.new(@issue, @field).value
-    end
-
-    respond_to do |format|
-      format.json { render json: { remaining: @remaining, error: @error } }
-      format.html do
-        if @error
-          redirect_to issue_path(@issue), flash: { error: @error }
-        else
-          redirect_to issue_path(@issue), notice: l(:notice_custom_decrement_field_initial_set)
-        end
-      end
     end
   end
 

@@ -1,10 +1,6 @@
 ru:
   error_custom_decrement_field_exhausted: "Значение уже равно нулю (или меньше), списание недоступно"
   error_custom_decrement_field_duplicate_literal: "Это списание уже было записано ранее - повторный запрос проигнорирован"
-  button_custom_decrement_field_initial: "Введите текущее количество"
-  error_custom_decrement_field_has_history: "У поля уже есть история — задать количество таким способом больше нельзя"
-  error_custom_decrement_field_invalid_amount: "Введите целое число больше нуля"
-  notice_custom_decrement_field_initial_set: "Количество записано"
   notice_custom_decrement_field_decremented: "Декрементировано"
   button_custom_decrement_field_decrement: "Декрементировать"
 
