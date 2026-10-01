@@ -5,7 +5,10 @@ module CustomDecrementField
   #
   # * an after_save seeds the very first history entry from whatever
   #   number the user typed into the field on the New Issue form, guarded
-  #   to only ever do this on the save that created the record.
+  #   to only ever do this on the save that created the record. (The one
+  #   later chance to type a number - an edit of an issue whose field has no
+  #   history yet - is a before_save, described at
+  #   custom_decrement_field_seed_on_update.)
   # * a second after_save unconditionally recomputes the field from the
   #   current comment history and writes the result back on every save,
   #   including the one seed just triggered, silently discarding anything
@@ -33,6 +36,7 @@ module CustomDecrementField
         # loads) has actually written the just-typed value into
         # custom_values. See custom_decrement_field_seed's comment for
         # why after_create is too early for that.
+        before_save :custom_decrement_field_seed_on_update
         after_save :custom_decrement_field_seed
         after_save :custom_decrement_field_recalculate_all
         # Both run after the recalculation above, so the parent's sum reads
@@ -96,8 +100,7 @@ module CustomDecrementField
         amount = custom_value_for(field)&.value.to_i
         next if amount.zero? # nothing typed (or explicitly zero) - no history entry needed
 
-        config = CustomDecrementField::TokenConfig.for_field(field)
-        amount.positive? ? config.increment_note(amount) : config.decrement_note(amount.abs)
+        custom_decrement_field_seed_note(field, amount)
       end
 
       return if notes_lines.empty?
@@ -107,13 +110,59 @@ module CustomDecrementField
       journals.reload
     end
 
+    # The same first-entry rule for an issue that already exists: while a
+    # decrementable field has no history at all, the ordinary edit form
+    # accepts a number for it (DecrementableIntFormat#edit_tag leaves the
+    # input enabled exactly then), and that number becomes the first history
+    # entry here, just as it does on creation. Once any entry exists the
+    # input is disabled, and anything submitted anyway is overwritten by the
+    # recalculation as before.
+    #
+    # A before_save, not an after_save like the creation seed, because core's
+    # own create_journal (an after_save registered long before this plugin
+    # loads) has already saved the edit's journal by the time an after_save
+    # of ours would run. Here the pending journal can still be extended, so
+    # the entry travels in the very same journal as the edit - one history
+    # entry holding the user's own comment (if they typed one), the line
+    # below it, and core's "Stock changed from (none) to 12" detail, which is
+    # accurate because the recalculation lands on that same number.
+    #
+    # Only a *changed* value counts: a nonzero stored value with no history
+    # behind it (not something this plugin produces) is left alone, and gets
+    # overwritten by the recalculation like any other direct input.
+    def custom_decrement_field_seed_on_update
+      return if new_record?
+
+      lines = CustomDecrementField::TokenConfig.fields_for_tracker(tracker).filter_map do |field|
+        next unless CustomDecrementField::StockCalculator.new(self, field).entries.empty?
+
+        amount = custom_field_value(field).to_i
+        next if amount.zero? || amount == custom_value_for(field)&.value.to_i
+
+        custom_decrement_field_seed_note(field, amount)
+      end
+      return if lines.empty?
+
+      journal = init_journal(User.current)
+      journal.notes = [journal.notes.presence, *lines].compact.join("\n")
+    end
+
+    def custom_decrement_field_seed_note(field, amount)
+      config = CustomDecrementField::TokenConfig.for_field(field)
+      amount.positive? ? config.increment_note(amount) : config.decrement_note(amount.abs)
+    end
+
     # Recomputes every decrementable field on this issue's tracker and
     # writes the results back. This is the only place that ever writes to
     # a decrementable custom field after issue creation, and that is what
     # makes the "field can only be changed through comments" guarantee
     # hold: whatever a user (or a REST API client) submits directly for
     # the field on an update is simply overwritten here, in the very same
-    # request, before the response is ever rendered back to them.
+    # request, before the response is ever rendered back to them. (A number
+    # submitted for a field with no history never reaches this point as
+    # direct input: custom_decrement_field_seed_on_update has already turned
+    # it into that field's first history entry, so the recalculation
+    # reproduces it.)
     #
     # Re-entrancy note: the zero-status transition below persists a
     # Journal directly (see custom_decrement_field_apply_zero_status),

@@ -145,16 +145,18 @@ module CustomDecrementField
       view.safe_join(parts)
     end
 
-    # The only moment a human is meant to type a plain number directly
-    # into this field is issue creation (see
-    # IssuePatch#custom_decrement_field_seed, which turns that number
-    # into the field's first history entry). Every save after that is
-    # handled purely by recalculation, so rendering an editable input on
-    # the ordinary edit form would just be confusing: whatever gets typed
-    # there is silently discarded on save anyway. Making the field
-    # non-editable here prevents that confusion natively, on top of (not
-    # instead of) the server-side overwrite, which remains the real
-    # guarantee regardless of what any particular form renders.
+    # A human may type a plain number straight into this field in exactly
+    # two situations, and both turn it into the field's first history entry
+    # (see IssuePatch#custom_decrement_field_seed and
+    # #custom_decrement_field_seed_on_update): when the issue is created, and
+    # when it is edited while the field has no history at all - a ticket made
+    # without an amount, or whose only entry was deleted. In every other
+    # state the value is derived from the comments, so an editable input
+    # would just be confusing: whatever got typed there is silently
+    # discarded on save anyway. Making the field non-editable there prevents
+    # that confusion natively, on top of (not instead of) the server-side
+    # overwrite, which remains the real guarantee regardless of what any
+    # particular form renders.
     #
     # `disabled` rather than `readonly`: tried `readonly` first, but in
     # practice a readonly text input renders visually identical to an
@@ -166,8 +168,12 @@ module CustomDecrementField
     # overwrites the field regardless of what (if anything) was submitted
     # for it.
     def edit_tag(view, tag_id, tag_name, custom_value, options={})
-      if custom_value.customized.new_record?
+      issue = custom_value.customized
+      if issue.new_record?
         super
+      elsif initial_amount_editable?(issue, custom_value.custom_field)
+        super(view, tag_id, tag_name, custom_value,
+              options.merge(title: l(:text_decrementable_int_initial_hint)))
       else
         view.text_field_tag(
           tag_name, custom_value.value,
@@ -181,6 +187,14 @@ module CustomDecrementField
     end
 
     private
+
+    # True while the field is configured and nothing in the issue's comments
+    # records an amount for it yet - the one state in which the edit form
+    # takes a number for it.
+    def initial_amount_editable?(issue, field)
+      calculator = CustomDecrementField::StockCalculator.new(issue, field)
+      calculator.enabled? && calculator.entries.empty?
+    end
 
     # A small warning glyph right next to the value itself - the banner
     # above the issue (see InconsistencyBannerHook) carries the actual

@@ -51,16 +51,29 @@ of a full page reload on click instead of an in-place AJAX update.
   edit form via `form_partial`. No plugin-owned schema at all.
 - The field's value is **always derived**: it equals everything added minus
   everything written off across the issue's comments, including the very
-  first entry - "how many units did we start with". There is no separate field for the initial quantity:
-  whatever number a user types into the field on issue creation is
-  automatically turned into that first comment
-  (`IssuePatch#custom_decrement_field_seed`), and from that point on the
-  field never accepts direct input again. This is enforced twice, on
-  purpose: `DecrementableIntFormat#edit_tag` renders the field
-  `readonly` on every save after creation (so the form itself doesn't
-  invite editing it), and `IssuePatch#custom_decrement_field_recalculate`
+  first entry - "how many units did we start with". There is no separate
+  field for the initial quantity. A number may be typed straight into the
+  field in exactly two situations, and in both it is automatically turned
+  into that first comment under the add keyword (`PRIHOD : 15`):
+  - on the New Issue form (`IssuePatch#custom_decrement_field_seed`);
+  - on the ordinary edit form of an issue whose field **has no history at
+    all** - a ticket created without an amount, or whose only entry was
+    deleted (`IssuePatch#custom_decrement_field_seed_on_update`). The entry
+    is appended to the edit's own journal, so one history item holds the
+    user's comment (if any), the `PRIHOD : N` line, and core's "Stock set to
+    N" detail. Only a changed, nonzero value counts, and the usual Redmine
+    permissions and workflow field rules apply, since this is a plain edit.
+
+  From the first entry on, the field never accepts direct input again. This
+  is enforced twice, on purpose: `DecrementableIntFormat#edit_tag` renders
+  the input `disabled` once the field has history (so the form itself
+  doesn't invite editing it), and `IssuePatch#custom_decrement_field_recalculate`
   silently overwrites whatever was submitted anyway on every save - the
-  second one is the real guarantee, the first is just honest UI.
+  second one is the real guarantee, the first is just honest UI. A field
+  with no history shows an ordinary enabled input with a tooltip saying what
+  typing there does; the issue page itself shows no "+" or entry form for it
+  (an inline "+" form existed briefly in the history of this branch and was
+  replaced by this).
 - **Two keywords, one grammar**: `KEYWORD : <amount> [literal]`, where
   KEYWORD is the field's **add keyword** (`PRIHOD : 10` adds ten) or its
   **write-off keyword** (`RASHOD : 1` writes one off). The keyword alone
@@ -348,8 +361,9 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 - `lib/custom_decrement_field/stock_calculator.rb` - computes the
   current value from comment history.
 - `lib/custom_decrement_field/issue_patch.rb` - seeds the first history
-  entry on issue creation, and recalculates the field (plus the
-  zero-status transition) on every save.
+  entry (on issue creation, and on an edit while the field has no history),
+  and recalculates the field (plus the zero-status transition) on every
+  save.
 - `lib/custom_decrement_field/journal_patch.rb` - triggers a
   recalculation whenever a comment is added, edited, or deleted.
 - `lib/custom_decrement_field/issue_css_classes_patch.rb` - adds a CSS

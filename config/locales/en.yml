@@ -18,6 +18,7 @@ en:
   error_custom_decrement_field_same_tokens: "The add keyword and the write-off keyword must be different words."
   text_zero_status_id_hint: "Optional. Leave blank to not change the issue's status automatically."
   text_decrementable_int_readonly_hint: "This value is computed from the issue's comment history and can't be edited directly here. Use the decrement button on the issue, or edit/delete the relevant comment to correct a mistake."
+  text_decrementable_int_initial_hint: "No amount has been recorded for this field yet, so you can type the current amount here. It is saved as the field's first history entry; from then on the value changes only through comments and the decrement button."
 
   label_watchdog: "Watchdog (critical level)"
   label_decrement_sum: "Weighted sum of children"
