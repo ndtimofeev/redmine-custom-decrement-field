@@ -63,6 +63,12 @@
                 <% end %>
               </li>
             <% end %>
+            <% if (problem = calculator.zero_status_problem) %>
+              <li>
+                <%= l("text_custom_decrement_field_zero_status_#{problem}",
+                      status: calculator.zero_status&.name, tracker: issue.tracker.name) %>
+              </li>
+            <% end %>
           </ul>
         </li>
       <% end %>

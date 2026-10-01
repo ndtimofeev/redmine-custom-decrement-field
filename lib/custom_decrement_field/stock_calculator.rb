@@ -35,7 +35,7 @@ module CustomDecrementField
     # run through #inconsistent? in Ruby, since that check has no SQL
     # equivalent (see IssueQueryPatch for why, and why that's fine here).
     def self.candidate_issues(scope = Issue.all)
-      scope.where(tracker_id: TokenConfig.tracker_ids_with_fields).includes(:journals)
+      scope.where(tracker_id: TokenConfig.tracker_ids_with_fields).includes(:journals, :tracker, :status)
     end
 
     def self.inconsistent_issue_ids(scope = Issue.all)
@@ -136,17 +136,51 @@ module CustomDecrementField
       enabled? && value.negative?
     end
 
-    # The single question everywhere this plugin needs to ask "did this
-    # field's history get tampered with outside the normal button/
-    # controller flow" - a negative total and a duplicated literal are
-    # both only reachable by hand-editing a comment (see #negative? and
-    # #duplicate_literals), and there's no reason to tell them apart at
-    # the call sites that just need to flag or filter on "something here
-    # needs a human to look at it": the issue-page banner, the tracker's
-    # row highlighting in list views, and the query filter all just ask
-    # this one method.
+    # The single question everywhere this plugin needs to ask "does this
+    # field need a human to look at it" - the issue-page banner, the
+    # tracker's row highlighting in list views, and the query filter all just
+    # ask this one method. Two unrelated kinds of trouble count:
+    #
+    # * the history was tampered with outside the normal button/controller
+    #   flow: a negative total and a duplicated literal are both only
+    #   reachable by hand-editing a comment (see #negative? and
+    #   #duplicate_literals);
+    # * the ticket ran out but its status says otherwise, and the configured
+    #   move to the zero status can't be made (see #zero_status_problem).
+    #
+    # There is no reason to tell them apart at the call sites that just need
+    # to flag or filter on "something here needs attention"; only the banner
+    # goes into the specifics.
     def inconsistent?
-      negative? || duplicate_literals.any?
+      negative? || duplicate_literals.any? || zero_status_problem.present?
+    end
+
+    # Why the ticket is not where the field's "status on reaching zero"
+    # setting says it should be, or nil when nothing is wrong. Derived from
+    # the current state each time rather than remembered when a transition
+    # was skipped (IssuePatch), like everything else here: it clears on its
+    # own once the cause is fixed, and there is no flag to forget to unset.
+    #
+    # It holds when the history records some stock that is now used up, a
+    # zero status is configured, the ticket is not in it, and either the
+    # status no longer exists (:status_missing) or ZeroStatusCheck says the
+    # ticket can't be moved there (:not_in_workflow, :not_closable,
+    # :not_reopenable). A ticket at zero whose zero status *would* be
+    # accepted is not flagged - it is just waiting, or somebody moved it
+    # elsewhere on purpose (the transition deliberately fires only on the
+    # crossing, so a later manual choice stands). Neither is a ticket that
+    # never had any stock recorded.
+    def zero_status_problem
+      return unless enabled? && config.zero_status_id
+
+      recorded = entries
+      return if recorded.empty? || recorded.sum(&:delta).positive?
+
+      status = zero_status
+      return :status_missing unless status
+      return if issue.status_id == status.id
+
+      ZeroStatusCheck.blocker(issue, status)
     end
 
     # We deliberately check <= 0 here, not == 0. The safe path (the

@@ -146,6 +146,14 @@ of a full page reload on click instead of an in-place AJAX update.
 
   A skipped transition writes one line to the Rails log naming the issue,
   the field and the reason, and is not retried when the cause is fixed later.
+  It also shows up on the ticket as an inconsistency
+  (`StockCalculator#zero_status_problem`, below) - derived from the current
+  state each time rather than remembered when the transition was skipped, so
+  it clears by itself once the cause is gone. It is reported only for a
+  ticket that has recorded stock, now used up, whose zero status it is not in
+  and could not be moved to; a ticket at zero whose zero status *would* be
+  accepted is not flagged, since it is either waiting or was moved elsewhere
+  on purpose, and a ticket that never had any stock is not flagged either.
   The field's admin form warns about the misconfigurations that can be seen
   there: a status missing from the workflow of any tracker the field is
   attached to (listing them), and a status id that no longer exists. Neither
@@ -158,20 +166,26 @@ of a full page reload on click instead of an in-place AJAX update.
   One status per field is deliberate; a status per tracker was considered and
   put off - it would live in `format_store` as a tracker-id-to-status-id map,
   with the single status as the default for trackers without an entry.
-- **Detecting an inconsistent history.** The safe path (button/controller)
+- **Detecting an inconsistent field.** The safe path (button/controller)
   can never produce a negative value or a repeated `literal` on its own -
   both are only reachable by hand-editing or duplicating a comment
-  directly. `StockCalculator#inconsistent?` treats a negative value and a
-  duplicated literal as one single concept (deliberately not two separate
-  ones to check/filter on) and is the one method everywhere in this
-  plugin that answers "does this need a human to look at it":
+  directly. A third kind of trouble has nothing to do with the history: the
+  stock is used up but the ticket could not be moved to the field's zero
+  status (see the previous point), so it sits in a status that says
+  otherwise. `StockCalculator#inconsistent?` treats all of these as one
+  single concept (deliberately not separate ones to check/filter on) and is
+  the one method everywhere in this plugin that answers "does this need a
+  human to look at it":
   - A small warning marker appears right next to the field's own value
     (`DecrementableIntFormat#inconsistency_marker`) - purely a nudge,
     visible to anyone who can see the value at all (unlike the decrement
     button, it isn't gated on `add_issue_notes`).
   - A Wikipedia-"marked for deletion"-style banner renders above the
     issue's own content on its show page (`InconsistencyBannerHook`),
-    naming the specific problem and, for a duplicated literal, linking to
+    naming the specific problem - including, for the zero-status kind, why
+    the move can't be made (the status isn't in this tracker's workflow, the
+    ticket has open subtasks or a blocker, it is a subtask of a closed parent,
+    or the configured status no longer exists) - and, for a duplicated literal, linking to
     the exact comments involved via Redmine's own `#note-N` anchors -
     filtered through `Issue#visible_journals_with_index` so a link never
     points at a private note the current viewer isn't allowed to see.
@@ -192,7 +206,7 @@ of a full page reload on click instead of an in-place AJAX update.
     on their row in list/query views (`IssueCssClassesPatch`, prepended
     onto `Issue#css_classes` - the same mechanism core itself uses for
     "overdue" rows).
-  - A "Decrement field history is inconsistent" query filter
+  - A "Decrement field is inconsistent" query filter
     (`IssueQueryPatch`) makes inconsistent issues findable directly.
     There's no column to filter on - the filter is registered via
     `add_available_filter`, and answered through Redmine's
@@ -509,6 +523,11 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   controller). Arbitrary amounts are only possible by hand-editing a
   comment's text, deliberately not exposed anywhere in the UI - see the
   concurrency note in the controller's comments for why.
+- The QR scanner plugin's inspector decides "inconsistent" on its own, from
+  the journals alone (it deliberately shares no code with this plugin), so it
+  does not know the zero-status kind of inconsistency: it flags a negative
+  value and a duplicated literal, but not a ticket stuck outside its zero
+  status.
 - A QR-code scanner was deliberately kept out of this plugin. It was
   discussed as a separate, independent plugin with its own contract (a
   scanned code is just a plain issue URL) and was never added here.
