@@ -13,6 +13,9 @@ module CustomDecrementField
   # The comparison is on the numbers (WatchdogCheck.reached_fields), not on
   # "barking": closing a ticket makes it stop barking without anything having
   # recovered, and must not release it; a closed ticket is not moved at all.
+  # Likewise a watchdog switched off (level cleared or 0) has not recovered
+  # (WatchdogCheck.recovered?); switching one on while the value is already at
+  # or below the level is a start like any other crossing.
   #
   # Two kinds of caller supply the "before":
   # * IssuePatch, around everything that can change an issue's own numbers (a
@@ -20,10 +23,10 @@ module CustomDecrementField
   #   recalculations);
   # * .around, for a parent whose sum is rewritten because a child changed
   #   (SumRecalculation) - the parent is not being saved at all.
-  # A ticket being created never fires: its numbers are stored before any
-  # recalculation looks at them, so there is nothing to compare against - a
-  # new parent with no children yet is "below" any level, and must not be
-  # moved the instant it is made.
+  # A ticket being created never fires (IssuePatch skips it): a new parent has
+  # no stored sum until its first recalculation writes 0, which would read as
+  # the watchdog starting to bark - and a parent with no children yet must not
+  # be moved the instant it is made.
   module WatchdogTransition
     module_function
 
@@ -47,7 +50,10 @@ module CustomDecrementField
 
       after = WatchdogCheck.reached_fields(issue)
       started = after - before
-      stopped = before - after
+      # "Stopped" means recovered: the watchdog is still on and the value is
+      # back above the level. A watchdog that merely went off (its level was
+      # cleared or set to 0) or lost its watched value has not recovered.
+      stopped = (before - after).select { |watchdog| WatchdogCheck.recovered?(issue, watchdog) }
       return if started.empty? && stopped.empty?
 
       move_for(issue, started, :trigger) { |watchdog| WatchdogConfig.trigger_status(watchdog) } ||

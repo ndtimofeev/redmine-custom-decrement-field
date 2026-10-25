@@ -215,7 +215,11 @@ module CustomDecrementField
         # Sum fields: this issue's own (its comments hold the multipliers)
         # and its parent's (this issue's count is one of the terms).
         CustomDecrementField::SumRecalculation.cascade(self)
-        CustomDecrementField::WatchdogTransition.fire(self, watchdogs_before)
+        # Not for the save that created the issue: a new parent has no stored
+        # sum before the cascade above writes its first one (0), so "before"
+        # would be empty and "after" barking, and the ticket would be moved
+        # the moment it is made.
+        CustomDecrementField::WatchdogTransition.fire(self, watchdogs_before) unless id_previously_changed?
       ensure
         @custom_decrement_field_processing = false
       end

@@ -3,6 +3,7 @@
         CustomDecrementField::WatchdogConfig.candidate_fields(f.object).map { |cf| [cf.name, cf.id.to_s] },
         { include_blank: true, label: :field_watched_field } %>
   <em class="info"><%= l(:text_watched_field_hint) %></em>
+  <br /><em class="info"><%= l(:text_watchdog_off_hint) %></em>
 </p>
 <p>
   <%# Same select as the decrementable field's "status on reaching zero" - see

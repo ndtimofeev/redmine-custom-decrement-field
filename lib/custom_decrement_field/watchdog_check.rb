@@ -2,6 +2,13 @@ module CustomDecrementField
   # The whole "barking" decision. Reads two already-stored numbers per
   # watchdog, nothing is recomputed and no flag is persisted, so it is cheap
   # enough to ask for every row of an issue list.
+  #
+  # A watchdog is *on* for an issue only when its level is a number above zero.
+  # An empty level and a level of 0 (or less) both mean "off for this issue":
+  # nothing is highlighted, nothing is moved, nothing is reported. Zero is not
+  # a threshold - "alert when the stock is gone" is the decrementable field's
+  # status on reaching zero, and a parent's sum has two decimals, so a level of
+  # 0.01 still catches it.
   module WatchdogCheck
     def self.barking?(issue)
       barking_fields(issue).any?
@@ -71,25 +78,35 @@ module CustomDecrementField
     end
     private_class_method :status_problem
 
-    # Both numbers present and the watched one strictly above the level - the
-    # opposite of "reached", but with the same blank-means-nothing rule, so a
-    # watchdog with no level never counts as having recovered.
+    # The watchdog is on and the watched one is strictly above the level - the
+    # opposite of "reached", with the same blank-means-nothing rule, so a
+    # watchdog that is off, or whose watched value is blank, never counts as
+    # having recovered. (Clearing the level, or setting it to 0, is switching
+    # the dog off, not stock coming back, and must not release the ticket.)
     def self.recovered?(issue, watchdog)
       available = issue.available_custom_fields
       watched = WatchdogConfig.watched_field(watchdog)
       return false unless watched && available.include?(watched)
 
-      level = number(issue, watchdog)
+      level = active_level(issue, watchdog)
       current = number(issue, watched)
       !level.nil? && !current.nil? && current > level
     end
 
-    # Blank on either side means "nothing to compare" - an unset threshold
-    # disables the watchdog, an unfilled watched field doesn't bark.
+    # Blank on either side means "nothing to compare", and so does a level that
+    # is not above zero (see the module comment): an off watchdog doesn't bark,
+    # an unfilled watched field doesn't bark.
     def self.reached?(issue, watched, watchdog)
-      level = number(issue, watchdog)
+      level = active_level(issue, watchdog)
       current = number(issue, watched)
       !level.nil? && !current.nil? && current <= level
+    end
+
+    # The level when it switches the watchdog on (a number above zero), else
+    # nil.
+    def self.active_level(issue, watchdog)
+      level = number(issue, watchdog)
+      level if level&.positive?
     end
 
     def self.number(issue, field)

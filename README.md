@@ -304,9 +304,23 @@ of a full page reload on click instead of an in-place AJAX update.
   `custom-decrement-field-low` CSS class (`IssueCssClassesPatch`) and is
   highlighted in lists and on its own page. `WatchdogCheck` only compares two
   already-stored numbers; nothing is recomputed and no flag is persisted.
-  - Stays silent for: a closed issue, an empty threshold (that disables the
-    watchdog), an empty watched value, a watched field that was deleted, or
-    one not attached to the issue's tracker.
+  - **On and off.** A watchdog is on for an issue only when its level is a
+    number above zero. An empty level and a level of 0 (or less) both mean
+    "off for this issue": nothing is highlighted, nothing is moved, nothing is
+    reported (`WatchdogCheck.active_level`). Zero is deliberately not a
+    threshold, so a ticket that has just been created with nothing recorded
+    (a parent whose sum is 0, level 0) doesn't light up; "alert when the stock
+    is gone" is the decrementable field's status on reaching zero, and for a
+    sum a level of 0.01 does it (the sum has two decimals). The input on the
+    issue form carries a tooltip saying so, and so does the admin form.
+    Switching a watchdog on or off during a ticket's life is not a recovery:
+    clearing the level or setting 0 while it barks moves nothing (in
+    particular it does not release the ticket - see
+    `WatchdogCheck.recovered?`); typing a level above the current value in
+    later is a start like any crossing and fires the trigger status.
+  - Stays silent for: a closed issue, a watchdog that is off (see above), an
+    empty watched value, a watched field that was deleted, or one not attached
+    to the issue's tracker.
   - Deliberately a dedicated class and not core's `overdue`: every `overdue`
     rule in core CSS only colors the due-date cell/value, so the class would
     show nothing on a ticket that has no due date (and `overdue?` is only
@@ -344,9 +358,13 @@ of a full page reload on click instead of an in-place AJAX update.
     saved deliberately does not fire. One move per call: a trigger comes
     before a release, and within each the first watchdog (by field order)
     whose status is allowed. A new parent starts out with a stored sum of 0, so
-    it is "below" any level from the start (and highlighted) without firing;
-    the first child that lifts the sum above the level makes it stop barking,
-    which moves it to the release status if there is one.
+    with a level above zero it is "below" it from the start (and highlighted);
+    the save that creates a ticket never fires (`IssuePatch` skips it - the
+    sum is first written during that very save, which would otherwise read as
+    the watchdog starting to bark, and an earlier version did move such a
+    parent the instant it was made), and the first child that lifts the sum
+    above the level makes it stop barking, which moves it to the release
+    status if there is one.
   - **Concurrency.** Two children of one parent changing at the same moment
     would each recompute the parent's sum without the other's change, and the
     later write would win (a lost update, independent of any status). So

@@ -17,5 +17,11 @@ module CustomDecrementField
     def label
       'label_watchdog'
     end
+
+    # The level is typed on the issue itself, where nothing says that empty and
+    # 0 mean "off"; the tooltip does.
+    def edit_tag(view, tag_id, tag_name, custom_value, options={})
+      super(view, tag_id, tag_name, custom_value, options.merge(title: l(:text_watchdog_level_hint)))
+    end
   end
 end

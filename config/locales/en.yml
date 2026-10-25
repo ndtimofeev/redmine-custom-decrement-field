@@ -39,6 +39,8 @@ en:
   label_decrement_sum: "Weighted sum of children"
   field_watched_field: "Watched field"
   text_watched_field_hint: "The ticket is highlighted once the watched field is at or below this field's value. Both fields must be attached to the same tracker."
+  text_watchdog_level_hint: "Empty or 0 - the watchdog is off for this issue"
+  text_watchdog_off_hint: "The critical level itself is typed on the issue. Leave it empty or 0 and the watchdog is off for that issue: nothing is highlighted and no status changes. For \"alert when it is gone\" use 0.01 on a sum, or the decrementable field's status on reaching zero."
   field_source_field: "Children's field to sum"
   field_multiplier_token: "Multiplier token"
   text_multiplier_token_hint: "Optional, e.g. PACK. A comment on this ticket like \"PACK : #57 : 0.5 bottle 0.5 l\" makes child #57 count 0.5 per unit; whatever follows the number is a note for the storekeeper and is ignored. Children not mentioned count 1."
