@@ -573,14 +573,16 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 Redmine-style tests live in `test/`, on top of core's own test helper and
 fixtures; nothing else is needed beyond a Redmine with its test group
 installed (`bundle install` without `--without test`) and a migrated test
-database. From Redmine's root, with the plugin in `plugins/`:
-
-    RAILS_ENV=test bundle exec rake redmine:plugins:test NAME=redmine_custom_decrement_field
-
-or, one file or all of them without rake:
+database. From Redmine's root, with the plugin in `plugins/`, one file or all
+of them:
 
     RAILS_ENV=test bundle exec ruby -Itest plugins/redmine_custom_decrement_field/test/unit/watchdog_test.rb
     RAILS_ENV=test bundle exec ruby -Itest -e 'Dir["plugins/redmine_custom_decrement_field/test/**/*_test.rb"].each { |f| require File.expand_path(f) }'
+
+These are the forms the suite was developed and run with. Core's plugin task,
+`RAILS_ENV=test bundle exec rake redmine:plugins:test NAME=redmine_custom_decrement_field`,
+should pick the same files up, but it has not been run (the development
+instance's bundle had no `rake`).
 
 - `test/test_helper.rb` - builds the world each test starts from: two
   trackers of the plugin's own with a small workflow of their own (so nothing
