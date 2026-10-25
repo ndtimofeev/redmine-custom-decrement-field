@@ -1,18 +1,15 @@
 require 'redmine'
 
-Rails.application.config.to_prepare do
-  # decrementable_int_format.rb must load before anything that reads a
-  # field's configuration, since it's what makes field_format ==
-  # 'decrementable_int' mean anything at all.
-  require_relative 'lib/custom_decrement_field/decrementable_int_format'
-  require_relative 'lib/custom_decrement_field/token_config'
-  require_relative 'lib/custom_decrement_field/stock_calculator'
-  require_relative 'lib/custom_decrement_field/issue_patch'
-  require_relative 'lib/custom_decrement_field/issue_css_classes_patch'
-  require_relative 'lib/custom_decrement_field/issue_query_patch'
-  require_relative 'lib/custom_decrement_field/journal_patch'
-  require_relative 'lib/custom_decrement_field/hooks'
-end
+# Load everything under lib/ in every environment. Redmine runs this file from
+# inside its own to_prepare callback (see Redmine::PluginLoader.load), so a
+# to_prepare block registered from here would never run - an earlier version of
+# this file had one, and it was dead code. The plugin's lib/ is on the autoload
+# path, and production's eager load happens to load all of it, but development
+# and test do not: nothing refers to the field formats or the patches by name,
+# so they would never register and the plugin would silently do nothing there.
+# The path is built from __FILE__ and not __dir__, which resolves symlinks and
+# would no longer match the directory Zeitwerk was given.
+Rails.autoloaders.main.eager_load_dir(File.expand_path('lib', File.dirname(__FILE__)))
 
 Redmine::Plugin.register :redmine_custom_decrement_field do
   name 'Custom Decrement Field'

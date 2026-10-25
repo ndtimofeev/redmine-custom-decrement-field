@@ -471,6 +471,8 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
 
 ## Structure
 
+- `init.rb` - registers the plugin and loads `lib/` explicitly (see "Tests"
+  for why).
 - `lib/custom_decrement_field/decrementable_int_format.rb` - registers
   the "Decrementable integer" format, its per-field settings, and the
   read-only editing behavior.
@@ -566,6 +568,44 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   rule's fixed 28px height is what made the button look oversized and
   disrupt the row's layout in the first place).
 
+## Tests
+
+Redmine-style tests live in `test/`, on top of core's own test helper and
+fixtures; nothing else is needed beyond a Redmine with its test group
+installed (`bundle install` without `--without test`) and a migrated test
+database. From Redmine's root, with the plugin in `plugins/`:
+
+    RAILS_ENV=test bundle exec rake redmine:plugins:test NAME=redmine_custom_decrement_field
+
+or, one file or all of them without rake:
+
+    RAILS_ENV=test bundle exec ruby -Itest plugins/redmine_custom_decrement_field/test/unit/watchdog_test.rb
+    RAILS_ENV=test bundle exec ruby -Itest -e 'Dir["plugins/redmine_custom_decrement_field/test/**/*_test.rb"].each { |f| require File.expand_path(f) }'
+
+- `test/test_helper.rb` - builds the world each test starts from: two
+  trackers of the plugin's own with a small workflow of their own (so nothing
+  depends on what core's fixtures allow), the four fields, extra statuses
+  (`@low`, `@back`, `@orphan` - in nobody's workflow - next to core's New and
+  Closed), and helpers to create issues and write comments the way the
+  controller does. Tests are transactional, like core's.
+- `test/unit/decrementable_field_test.rb` - the keywords and their grammar, the
+  number typed on creation or on the edit form, deleting the only entry, the
+  zero status (and when it is skipped), duplicates and inconsistency.
+- `test/unit/status_transition_test.rb` - when a ticket may be moved to a
+  status, the move itself (`closed_on`, done ratio, journal) and the
+  compare-and-set between two movers.
+- `test/unit/watchdog_test.rb` - on and off, the trigger and release statuses,
+  switching off or on mid-life, a parent's sum, and the stuck-move reports.
+- `test/functional/` - the decrement endpoint (permission, note, literal,
+  exhausted, json) and what the issue page, edit form and lists render.
+
+The plugin used to register its field formats and patches only where Rails
+eager-loads (production): `init.rb` held a `to_prepare` block that never ran,
+because Redmine runs `init.rb` itself from inside its own `to_prepare`. In
+development and test nothing referred to the formats by name, so the plugin did
+nothing at all there. `init.rb` now loads `lib/` explicitly in every
+environment, which is also what made these tests possible.
+
 ## Known limitations / TODO
 
 - This branch's button has not yet been tested against a real Redmine
@@ -600,7 +640,7 @@ run `bundle` and restart, with shell access to its `plugins/` directory.
   parent when some of its
   children have an inconsistent history (their contribution can't be fully
   trusted).
-- No automated tests yet.
+- Automated tests cover the model/controller/page behavior (see "Tests"); nothing drives a real browser, so the button's look and the banner's move into `#content` (a few lines of JavaScript) are still checked by eye.
 - The decrement amount is hardcoded to 1 (`DECREMENT_AMOUNT` in the
   controller). Arbitrary amounts are only possible by hand-editing a
   comment's text, deliberately not exposed anywhere in the UI - see the
