@@ -1,4 +1,6 @@
 en:
+  error_decrement_sum_required: "cannot be required because the value is calculated automatically"
+  text_decrement_sum_not_required: "This calculated field cannot be marked required."
   error_custom_decrement_field_exhausted: "Value is already zero (or less), decrement is unavailable"
   error_custom_decrement_field_duplicate_literal: "This exact decrement was already recorded - ignoring the duplicate request"
   notice_custom_decrement_field_decremented: "Decremented"

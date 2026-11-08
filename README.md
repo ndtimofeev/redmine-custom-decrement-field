@@ -74,8 +74,9 @@ of a full page reload on click instead of an in-place AJAX update.
   typing there does; the issue page itself shows no "+" or entry form for it
   (an inline "+" form existed briefly in the history of this branch and was
   replaced by this).
-- **Two keywords, one grammar**: `KEYWORD : <amount> [literal]`, where
-  KEYWORD is the field's **add keyword** (`PRIHOD : 10` adds ten) or its
+- **Two keywords, one grammar**: `KEYWORD : <amount> [literal]`. The keyword
+  must begin a line, with no preceding whitespace or text. KEYWORD is the
+  field's **add keyword** (`PRIHOD : 10` adds ten) or its
   **write-off keyword** (`RASHOD : 1` writes one off). The keyword alone
   decides the direction, so the amount is always written as a plain positive
   number, and any sign typed in front of it is ignored - `RASHOD : -1` still
@@ -161,8 +162,8 @@ of a full page reload on click instead of an in-place AJAX update.
   Because the transition bypasses core's callbacks, the two things core would
   have done on a status change are repeated by hand: `closed_on` (set when
   the ticket goes from open to closed) and, on instances that derive the done
-  ratio from the status, `done_ratio`. A parent's derived dates/ratio are not
-  recalculated by this move (that only happens in a real `Issue#save`).
+  ratio from the status, `done_ratio`. The parent's derived attributes are
+  refreshed through Redmine's parent recalculation after the status move.
   One status per field is deliberate; a status per tracker was considered and
   put off - it would live in `format_store` as a tracker-id-to-status-id map,
   with the single status as the default for trackers without an entry.
@@ -261,6 +262,7 @@ of a full page reload on click instead of an in-place AJAX update.
     as everything else here (history in comments, nothing separate to drift):
     `PACK : #57 : 0,5 bottle 0.5 l, 12 to a box` makes child #57 count 0.5 per
     unit. The grammar is `TOKEN : #<child id> : <multiplier> [comment]`: the
+    token must begin a line with no preceding whitespace or text. The
     multiplier takes a point or comma decimal, and everything after it to the
     end of the line is a free-form note for the storekeeper that the system
     never interprets - the pattern consumes it, so text inside it that looks

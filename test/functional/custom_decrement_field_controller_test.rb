@@ -71,6 +71,37 @@ class CustomDecrementFieldControllerTest < Redmine::ControllerTest
     assert_response :not_found
   end
 
+  test 'a decrementable field belonging to another tracker is a 404' do
+    other = IssueCustomField.create!(name: 'Other stock', field_format: 'decrementable_int',
+      is_for_all: true, tracker_ids: [@case.instance_variable_get(:@parent).id],
+      increment_token: 'ADD', decrement_token: 'TAKE')
+    assert_no_difference -> { current.journals.count } do
+      post :decrement, params: { issue_id: @issue.id, custom_field_id: other.id }
+    end
+    assert_response :not_found
+  end
+
+  test 'a private issue invisible to the user cannot be decremented' do
+    Role.find(1).update!(issues_visibility: 'default')
+    @issue.update!(is_private: true)
+    @request.session[:user_id] = 2
+    assert_no_difference -> { current.journals.count } do
+      decrement
+    end
+    assert_response :not_found
+    assert_equal 3, current.custom_value_for(@stock).value.to_i
+  end
+
+  test 'a field invisible to the user cannot be decremented' do
+    @stock.update_columns(visible: false)
+    @request.session[:user_id] = 2
+    assert_no_difference -> { current.journals.count } do
+      decrement
+    end
+    assert_response :not_found
+    assert_equal 3, current.custom_value_for(@stock).value.to_i
+  end
+
   test 'it needs exactly the permission to add notes' do
     role = Role.find(1)
     role.remove_permission!(:add_issue_notes)

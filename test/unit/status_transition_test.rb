@@ -60,6 +60,17 @@ class StatusTransitionTest < CustomDecrementField::TestCase
     assert_not_nil reload(issue).closed_on
   end
 
+  test 'closing a child recalculates its parent progress' do
+    with_settings issue_done_ratio: 'issue_status', parent_issue_done_ratio: 'derived' do
+      @closed.update!(default_done_ratio: 100)
+      parent = create_issue(@batch, 'parent')
+      child = create_issue(@batch, 'child', {}, parent: parent)
+      assert_equal 0, reload(parent).done_ratio
+      assert CustomDecrementField::StatusTransition.apply(reload(child), @closed)
+      assert_equal 100, reload(parent).done_ratio
+    end
+  end
+
   test 'apply takes the done ratio from the status when the instance works that way' do
     with_settings issue_done_ratio: 'issue_status' do
       @low.update!(default_done_ratio: 40)

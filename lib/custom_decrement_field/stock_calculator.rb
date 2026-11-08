@@ -89,7 +89,7 @@ module CustomDecrementField
       return [] unless enabled?
 
       keywords = [config.increment_token, config.decrement_token].map { |k| Regexp.escape(k) }.join('|')
-      pattern = /(?<keyword>#{keywords})\s*:\s*[+-]?(?<amount>\d+)(?:[ \t]+(?<literal>#{LITERAL})(?=\s|\z))?/
+      pattern = /^(?<keyword>#{keywords})[ \t]*:[ \t]*[+-]?(?<amount>\d+)(?:[ \t]+(?<literal>#{LITERAL})(?=\s|\z))?/
 
       issue.journals.flat_map do |journal|
         next [] if journal.notes.blank?

@@ -63,8 +63,8 @@ module CustomDecrementField
     # when a status changes, so the two that matter are repeated by hand:
     # closed_on (core: set when the issue goes from open to closed, kept when
     # it is reopened) and, when the instance uses statuses for the done
-    # ratio, done_ratio. Not repeated: the recalculation of a parent's
-    # derived dates/ratio, which only runs through a real save.
+    # ratio, done_ratio. The parent's derived attributes are refreshed using
+    # Redmine's own parent recalculation after the status update.
     #
     # Journal#add_attribute_detail is the same private helper Redmine's own
     # core code uses (e.g. Issue's parent/child change tracking) to build a
@@ -96,6 +96,7 @@ module CustomDecrementField
           journal = issue.init_journal(User.current)
           journal.send(:add_attribute_detail, 'status_id', old_status_id, status.id)
           journal.save!
+          issue.send(:update_parent_attributes)
           moved = true
         end
       end

@@ -91,7 +91,8 @@ class CustomDecrementFieldController < ApplicationController
   end
 
   def find_issue
-    @issue = Issue.find(params[:issue_id])
+    @issue = Issue.visible.find_by(id: params[:issue_id])
+    render_404 unless @issue
   end
 
   def find_field
@@ -102,7 +103,11 @@ class CustomDecrementFieldController < ApplicationController
     # stale or forged URL pointing at a field that was never configured
     # this way, rather than a "real" error worth explaining to the
     # caller.
-    render_404 and return unless CustomDecrementField::TokenConfig.for_field(@field)
+    unless CustomDecrementField::TokenConfig.for_field(@field) &&
+           @issue.available_custom_fields.include?(@field) &&
+           @field.visible_by?(@issue.project, User.current)
+      render_404 and return
+    end
   end
 
   # No dedicated permission is introduced for this action. By design, the

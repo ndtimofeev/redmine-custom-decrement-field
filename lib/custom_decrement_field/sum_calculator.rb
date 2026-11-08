@@ -43,7 +43,7 @@ module CustomDecrementField
     def multipliers
       return {} unless config.multiplier_token
 
-      pattern = /#{Regexp.escape(config.multiplier_token)}\s*:\s*#(\d+)\s*:\s*(\d+(?:[.,]\d+)?)[^\r\n]*/
+      pattern = /^#{Regexp.escape(config.multiplier_token)}[ \t]*:[ \t]*#(\d+)[ \t]*:[ \t]*(\d+(?:[.,]\d+)?)[^\r\n]*/
       issue.journals.reorder(:created_on, :id).each_with_object({}) do |journal, found|
         next if journal.notes.blank?
 

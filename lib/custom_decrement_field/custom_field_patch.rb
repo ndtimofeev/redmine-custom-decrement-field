@@ -12,10 +12,15 @@ module CustomDecrementField
         # tracker_ids already reflects trackers attached in this same save.
         after_save :custom_decrement_field_backfill_sums
         validate :custom_decrement_field_distinct_keywords
+        validate :custom_decrement_field_sum_not_required
       end
     end
 
     private
+
+    def custom_decrement_field_sum_not_required
+      errors.add(:is_required, ::I18n.t(:error_decrement_sum_required)) if field_format == 'decrement_sum' && is_required?
+    end
 
     # Both keywords may be left blank while a field is still being set up
     # (it simply stays inert, see TokenConfig.for_field), but one word cannot

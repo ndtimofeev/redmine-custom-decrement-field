@@ -1,4 +1,6 @@
 ru:
+  error_decrement_sum_required: "не может быть обязательным, поскольку значение вычисляется автоматически"
+  text_decrement_sum_not_required: "Это вычисляемое поле нельзя отметить как обязательное."
   error_custom_decrement_field_exhausted: "Значение уже равно нулю (или меньше), списание недоступно"
   error_custom_decrement_field_duplicate_literal: "Это списание уже было записано ранее - повторный запрос проигнорирован"
   notice_custom_decrement_field_decremented: "Декрементировано"

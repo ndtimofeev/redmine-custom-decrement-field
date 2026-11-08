@@ -33,6 +33,33 @@ class DecrementableFieldTest < CustomDecrementField::TestCase
     assert_empty calculator(issue).duplicate_literals
   end
 
+  test 'keywords only match at the beginning of a line' do
+    issue = create_issue(@batch, 'a', { @stock => '10' })
+    issue = comment(issue, 'NEWRASHOD : 3')
+    issue = comment(issue, 'ЯRASHOD : 2')
+    assert_equal 10, stock_of(issue)
+    issue = comment(issue, 'Note: RASHOD : 1')
+    issue = comment(issue, ' RASHOD : 1')
+    assert_equal 10, stock_of(issue)
+    issue = comment(issue, "Note\nRASHOD : 1")
+    assert_equal 9, stock_of(issue)
+  end
+
+  test 'a sum field cannot be required' do
+    @sum.is_required = true
+    refute @sum.valid?
+    assert @sum.errors[:is_required].any?
+  end
+
+  test 'a multiplier must start at the beginning of a line' do
+    parent = create_issue(@parent, 'parent')
+    child = create_issue(@batch, 'child', { @stock => '4' }, parent: parent)
+    parent = comment(parent, "note FASOVKA : ##{child.id} : 3\n FASOVKA : ##{child.id} : 5")
+    assert_equal 4, reload(parent).custom_value_for(@sum).value.to_f
+    parent = comment(parent, "note\nFASOVKA : ##{child.id} : 2")
+    assert_equal 8, reload(parent).custom_value_for(@sum).value.to_f
+  end
+
   test 'a literal that was already used is found, and a repeat makes the field inconsistent' do
     issue = create_issue(@batch, 'a', { @stock => '10' })
     issue = comment(issue, 'PRIHOD : 5 delivery-42')
